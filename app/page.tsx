@@ -41,17 +41,15 @@ export default function Home() {
 
   async function searchLeads(event: FormEvent) {
     event.preventDefault();
-    if (!token) {
-      setError('Sign in first so LeadPilot can securely search and save leads to your account.');
-      return;
-    }
     setLoading(true);
     setError('');
     setWarnings([]);
     try {
+      const headers: Record<string, string> = { 'content-type': 'application/json' };
+      if (token) headers.authorization = `Bearer ${token}`;
       const response = await fetch('/api/leads/search', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        headers,
         body: JSON.stringify({
           keywords: query,
           city: location,
@@ -91,13 +89,13 @@ export default function Home() {
       </section>
 
       <section className="panel">
-        <div className="panelTitle"><div><h2>Lead Finder</h2><p>Tell LeadPilot who you want to sell to.</p></div><span className="live"><i /> {token ? 'SIGNED IN' : 'SIGN IN REQUIRED'}</span></div>
+        <div className="panelTitle"><div><h2>Lead Finder</h2><p>Tell LeadPilot who you want to sell to.</p></div><span className="live"><i /> {token ? 'SIGNED IN' : 'PUBLIC SEARCH'}</span></div>
         <form onSubmit={searchLeads} className="form">
           <label>What are you looking for<input value={query} onChange={e => setQuery(e.target.value)} placeholder="e.g. laptops, computer shops, fintech" /></label>
           <label>Location<input value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. Lagos" /></label>
           <label>Industry<input value={industry} onChange={e => setIndustry(e.target.value)} placeholder="e.g. Technology" /></label>
           <label>Leads<select value={limit} onChange={e => setLimit(e.target.value)}><option value="5">5</option><option value="10">10</option><option value="25">25</option><option value="50">50</option></select></label>
-          <button disabled={loading || !token}>{loading ? 'Searching…' : 'Find leads →'}</button>
+          <button disabled={loading}>{loading ? 'Searching…' : 'Find leads →'}</button>
         </form>
         {error && <div className="error"><strong>Search needs attention</strong><span>{error}</span></div>}
         {warnings.length > 0 && <div className="warning">{warnings.join(' · ')}</div>}
@@ -110,7 +108,7 @@ export default function Home() {
           const locationText = lead.business?.location || [lead.business?.city, lead.business?.country].filter(Boolean).join(', ') || location || 'Location pending';
           const website = lead.website || lead.business?.website;
           return <article className="lead" key={lead.id || `${company}-${i}`}><div className="leadTop"><div className="avatar">{company.slice(0, 1).toUpperCase()}</div><div><h3>{company}</h3><p>{lead.business?.industry || industry || 'B2B prospect'}</p></div><strong className="score">{lead.score ?? '—'}</strong></div><div className="meta"><span>{locationText}</span><span>{lead.email || lead.business?.email || 'Email not listed'}</span><span>{lead.phone || lead.business?.phone || 'Phone not listed'}</span></div>{website && <a href={website} target="_blank" rel="noreferrer">Visit website ↗</a>}</article>;
-        })}</div> : <div className="empty"><div className="emptyIcon">⌕</div><h3>Start your first lead search</h3><p>Sign in above, then search a real location and market. LeadPilot will query its built-in public business source and return only records it can actually find.</p></div>}
+        })}</div> : <div className="empty"><div className="emptyIcon">⌕</div><h3>Start your first lead search</h3><p>You can search without signing in. Sign in when you want to use workspace/account features.</p></div>}
       </section>
 
       <footer>LeadPilot AI · real business discovery · evidence-aware scoring · Data source: OpenStreetMap</footer>
