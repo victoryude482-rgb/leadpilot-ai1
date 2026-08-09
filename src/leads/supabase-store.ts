@@ -9,13 +9,16 @@ export interface SupabaseLikeClient {
   };
 }
 
+/** One store instance is scoped to one authenticated account. */
 export class SupabaseLeadStore implements LeadStore {
-  constructor(private readonly client: SupabaseLikeClient) {}
+  constructor(private readonly client: SupabaseLikeClient, private readonly accountId: string) {
+    if (!accountId) throw new Error('accountId is required');
+  }
 
-  async saveBusiness(accountId: string, business: BusinessRecord) {
+  async saveBusiness(business: BusinessRecord) {
     const { data, error } = await this.client.from('businesses').upsert({
       id: business.id,
-      account_id: accountId,
+      account_id: this.accountId,
       name: business.name,
       website: business.website,
       phone: business.phone,
@@ -31,9 +34,10 @@ export class SupabaseLeadStore implements LeadStore {
   }
 
   async saveLead(lead: LeadRecord) {
+    if (lead.accountId !== this.accountId) throw new Error('Forbidden');
     const { data, error } = await this.client.from('leads').upsert({
       id: lead.id,
-      account_id: lead.accountId,
+      account_id: this.accountId,
       business_id: lead.businessId,
       status: lead.status,
       score: lead.score,
@@ -45,12 +49,14 @@ export class SupabaseLeadStore implements LeadStore {
   }
 
   async updateStatus(accountId: string, leadId: string, status: LeadStatus) {
-    const { error } = await this.client.from('leads').update({ status, updated_at: new Date().toISOString() }).eq('id', leadId).eq('account_id', accountId);
+    if (accountId !== this.accountId) throw new Error('Forbidden');
+    const { error } = await this.client.from('leads').update({ status, updated_at: new Date().toISOString() }).eq('id', leadId).eq('account_id', this.accountId);
     if (error) throw new Error(`Failed to update lead status: ${error.message}`);
   }
 
   async listLeads(accountId: string) {
-    const { data, error } = await this.client.from('leads').select('*').eq('account_id', accountId);
+    if (accountId !== this.accountId) throw new Error('Forbidden');
+    const { data, error } = await this.client.from('leads').select('*').eq('account_id', this.accountId);
     if (error) throw new Error(`Failed to list leads: ${error.message}`);
     return (data ?? []) as LeadRecord[];
   }
