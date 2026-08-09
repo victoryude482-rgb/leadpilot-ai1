@@ -15,7 +15,8 @@ export class SupabaseLeadStore implements LeadStore {
     if (!accountId) throw new Error('accountId is required');
   }
 
-  async saveBusiness(business: BusinessRecord) {
+  async saveBusiness(accountId: string, business: BusinessRecord) {
+    if (accountId !== this.accountId) throw new Error('Forbidden');
     const { data, error } = await this.client.from('businesses').upsert({
       id: business.id,
       account_id: this.accountId,
