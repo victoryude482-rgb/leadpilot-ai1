@@ -1,7 +1,7 @@
 import type { BusinessRecord, LeadRecord, LeadStatus } from './model';
 
 export interface LeadStore {
-  saveBusiness(accountId: string, business: BusinessRecord): Promise<BusinessRecord>;
+  saveBusiness(business: BusinessRecord): Promise<BusinessRecord>;
   saveLead(lead: LeadRecord): Promise<LeadRecord>;
   updateStatus(accountId: string, leadId: string, status: LeadStatus): Promise<void>;
   listLeads(accountId: string): Promise<LeadRecord[]>;
@@ -9,12 +9,11 @@ export interface LeadStore {
 
 /** Temporary development adapter. Replace with Supabase implementation without changing callers. */
 export class MemoryLeadStore implements LeadStore {
-  private businesses = new Map<string, BusinessRecord & { accountId: string }>();
+  private businesses = new Map<string, BusinessRecord>();
   private leads = new Map<string, LeadRecord>();
 
-  async saveBusiness(accountId: string, business: BusinessRecord) {
-    const record = { ...business, accountId };
-    this.businesses.set(business.id, record);
+  async saveBusiness(business: BusinessRecord) {
+    this.businesses.set(business.id, business);
     return business;
   }
 
