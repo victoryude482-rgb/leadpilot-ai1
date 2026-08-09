@@ -1,64 +1,56 @@
 import type { BusinessRecord, LeadRecord, LeadStatus } from './model';
 import type { LeadStore } from './store';
 
-export interface SupabaseLikeClient {
-  from(table: string): {
-    upsert(values: Record<string, unknown>, options?: Record<string, unknown>): Promise<{ data: unknown; error: { message: string } | null }>;
-    select(columns?: string): { eq(column: string, value: string): Promise<{ data: unknown; error: { message: string } | null }> };
-    update(values: Record<string, unknown>): { eq(column: string, value: string): { eq(column: string, value: string): Promise<{ error: { message: string } | null }> } };
-  };
+export interface SupabaseStoreConfig {
+  url: string;
+  serviceRoleKey: string;
 }
 
-/** One store instance is scoped to one authenticated account. */
 export class SupabaseLeadStore implements LeadStore {
-  constructor(private readonly client: SupabaseLikeClient, private readonly accountId: string) {
-    if (!accountId) throw new Error('accountId is required');
+  constructor(private readonly config: SupabaseStoreConfig) {}
+
+  private async request(path: string, init: RequestInit = {}) {
+    const response = await fetch(`${this.config.url.replace(/\/$/, '')}/rest/v1/${path}`, {
+      ...init,
+      headers: {
+        apikey: this.config.serviceRoleKey,
+        Authorization: `Bearer ${this.config.serviceRoleKey}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+        ...(init.headers ?? {}),
+      },
+    });
+    if (!response.ok) throw new Error(`Supabase request failed: ${response.status}`);
+    return response;
   }
 
-  async saveBusiness(accountId: string, business: BusinessRecord) {
-    if (accountId !== this.accountId) throw new Error('Forbidden');
-    const { data, error } = await this.client.from('businesses').upsert({
-      id: business.id,
-      account_id: this.accountId,
-      name: business.name,
-      website: business.website,
-      phone: business.phone,
-      email: business.email,
-      address: business.address,
-      city: business.city,
-      country: business.country,
-      industry: business.industry,
-      source: business.source,
-    }, { onConflict: 'id' });
-    if (error) throw new Error(`Failed to save business: ${error.message}`);
-    return (data ?? business) as BusinessRecord;
+  async saveBusiness(business: BusinessRecord) {
+    const response = await this.request('businesses?on_conflict=id', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify(business),
+    });
+    return (await response.json())[0] as BusinessRecord;
   }
 
   async saveLead(lead: LeadRecord) {
-    if (lead.accountId !== this.accountId) throw new Error('Forbidden');
-    const { data, error } = await this.client.from('leads').upsert({
-      id: lead.id,
-      account_id: this.accountId,
-      business_id: lead.businessId,
-      status: lead.status,
-      score: lead.score,
-      score_label: lead.scoreLabel,
-      updated_at: lead.updatedAt,
-    }, { onConflict: 'id' });
-    if (error) throw new Error(`Failed to save lead: ${error.message}`);
-    return (data ?? lead) as LeadRecord;
+    const response = await this.request('leads?on_conflict=id', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify(lead),
+    });
+    return (await response.json())[0] as LeadRecord;
   }
 
   async updateStatus(accountId: string, leadId: string, status: LeadStatus) {
-    if (accountId !== this.accountId) throw new Error('Forbidden');
-    const { error } = await this.client.from('leads').update({ status, updated_at: new Date().toISOString() }).eq('id', leadId).eq('account_id', this.accountId);
-    if (error) throw new Error(`Failed to update lead status: ${error.message}`);
+    await this.request(`leads?id=eq.${encodeURIComponent(leadId)}&account_id=eq.${encodeURIComponent(accountId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, updatedAt: new Date().toISOString() }),
+    });
   }
 
   async listLeads(accountId: string) {
-    if (accountId !== this.accountId) throw new Error('Forbidden');
-    const { data, error } = await this.client.from('leads').select('*').eq('account_id', this.accountId);
-    if (error) throw new Error(`Failed to list leads: ${error.message}`);
-    return (data ?? []) as LeadRecord[];
+    const response = await this.request(`leads?account_id=eq.${encodeURIComponent(accountId)}&order=createdAt.desc`);
+    return (await response.json()) as LeadRecord[];
   }
 }
