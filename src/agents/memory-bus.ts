@@ -1,8 +1,8 @@
 import type { AgentEvent, AgentEventType, AgentMemoryStore, AgentName, MemoryRecord } from '../../docs/agent-contract';
 
 export class InMemoryAgentBus implements AgentMemoryStore {
-  private memories: MemoryRecord[] = [];
-  private events: AgentEvent[] = [];
+  private memories: MemoryRecord<any>[] = [];
+  private events: AgentEvent<any>[] = [];
 
   async getRelevantMemory(query: {
     accountId: string;
@@ -21,14 +21,14 @@ export class InMemoryAgentBus implements AgentMemoryStore {
 
   async saveMemory<T>(memory: Omit<MemoryRecord<T>, 'id' | 'createdAt' | 'updatedAt'>): Promise<MemoryRecord<T>> {
     const now = new Date().toISOString();
-    const record = { ...memory, id: crypto.randomUUID(), createdAt: now, updatedAt: now } as MemoryRecord<T>;
+    const record: MemoryRecord<T> = { ...memory, id: crypto.randomUUID(), createdAt: now, updatedAt: now };
     this.memories.push(record);
     return record;
   }
 
   async appendEvent<T>(event: Omit<AgentEvent<T>, 'eventId' | 'createdAt'>): Promise<AgentEvent<T>> {
-    const record = { ...event, eventId: crypto.randomUUID(), createdAt: new Date().toISOString() } as AgentEvent<T>;
-    this.events.push(record as AgentEvent);
+    const record: AgentEvent<T> = { ...event, eventId: crypto.randomUUID(), createdAt: new Date().toISOString() };
+    this.events.push(record);
     return record;
   }
 
