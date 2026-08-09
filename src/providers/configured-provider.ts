@@ -3,13 +3,16 @@ import { ApolloLeadProvider } from './apollo-provider';
 import { OpenStreetMapLeadProvider } from './openstreetmap-provider';
 
 /**
- * Use Apollo when its server-side API key is configured, while keeping the
- * free OpenStreetMap provider as a fallback. This makes real lead discovery
- * work even when OSM has sparse coverage for a particular country or industry.
+ * Keep the built-in public business finder as the default. Apollo's
+ * mixed_companies/search endpoint is not available on Apollo Free plans,
+ * even when a valid API key is configured. Apollo can be explicitly enabled
+ * later with APOLLO_USE_PAID_SEARCH=true after upgrading the provider plan.
  */
 export function configuredLeadProviders(): LeadProvider[] {
   const apolloKey = process.env.APOLLO_API_KEY?.trim();
-  if (apolloKey) {
+  const usePaidApolloSearch = process.env.APOLLO_USE_PAID_SEARCH === 'true';
+
+  if (apolloKey && usePaidApolloSearch) {
     return [new ApolloLeadProvider(apolloKey), new OpenStreetMapLeadProvider()];
   }
 
