@@ -12,10 +12,10 @@ export interface SupabaseLikeClient {
 export class SupabaseLeadStore implements LeadStore {
   constructor(private readonly client: SupabaseLikeClient) {}
 
-  async saveBusiness(business: BusinessRecord) {
+  async saveBusiness(accountId: string, business: BusinessRecord) {
     const { data, error } = await this.client.from('businesses').upsert({
       id: business.id,
-      account_id: business.id,
+      account_id: accountId,
       name: business.name,
       website: business.website,
       phone: business.phone,
