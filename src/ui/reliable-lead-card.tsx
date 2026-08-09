@@ -22,10 +22,7 @@ export function ReliableLeadCard({ lead, report }: { lead: LeadRecord; report: R
           </div>
         ))}
       </div>
-      <p className="mt-4 text-sm text-slate-300">Website: {report.website.status} — {report.website.detail}</p>
-      <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-400">
-        {report.reasons.map((reason, i) => <li key={i}>{reason}</li>)}
-      </ul>
+      <p className="mt-4 text-sm text-slate-300">Website: {report.website.status}</p>
     </article>
   );
 }
