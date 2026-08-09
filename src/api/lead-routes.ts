@@ -18,6 +18,6 @@ export async function listLeads(context: AuthContext | null, deps: LeadApiDepend
 export async function findLeads(context: AuthContext | null, query: LeadSearchQuery, deps: LeadApiDependencies) {
   if (!context) throw new Error('Authentication required');
   const result = await runLeadFinderPipeline(context.accountId, deps.providers, query);
-  await persistFinderResults(deps.store, result.results);
+  await persistFinderResults(deps.store, context.accountId, result.results);
   return result;
 }
