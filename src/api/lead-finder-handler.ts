@@ -12,10 +12,6 @@ export async function handleLeadFinder(
   request: LeadFinderRequest,
   providers: LeadProvider[],
 ) {
-  if (!auth?.accountId) {
-    return { status: 401 as const, body: { error: 'Authentication required' } };
-  }
-
   if (providers.length === 0) {
     return {
       status: 503 as const,
@@ -23,7 +19,11 @@ export async function handleLeadFinder(
     };
   }
 
-  const result = await runLeadFinderPipeline(auth.accountId, providers, {
+  // Public discovery is allowed without an account. Authenticated searches
+  // keep the user's id so workspace persistence can be added later.
+  const accountId = auth?.accountId ?? 'public-search';
+
+  const result = await runLeadFinderPipeline(accountId, providers, {
     industry: request.industry?.trim(),
     country: request.country?.trim(),
     city: request.city?.trim(),
@@ -31,9 +31,6 @@ export async function handleLeadFinder(
     limit: Math.min(Math.max(request.limit ?? 25, 1), 100),
   });
 
-  // Do not silently return an empty list when the only live provider failed.
-  // Surface the provider error so the user can fix the API key/scope instead
-  // of seeing a search that appears to do nothing.
   if (result.results.length === 0 && result.warnings.length > 0) {
     return {
       status: 502 as const,
