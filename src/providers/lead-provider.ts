@@ -1,5 +1,3 @@
-import type { ImportedLeadRow } from '../leads/model';
-
 export interface LeadSearchQuery {
   industry?: string;
   country?: string;
@@ -8,35 +6,27 @@ export interface LeadSearchQuery {
   limit?: number;
 }
 
-export interface LeadProviderResult {
-  records: ImportedLeadRow[];
+export interface DiscoveredBusiness {
+  name: string;
+  website?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  industry?: string;
   source: string;
-  warnings: string[];
 }
 
 export interface LeadProvider {
-  search(query: LeadSearchQuery): Promise<LeadProviderResult>;
+  search(query: LeadSearchQuery): Promise<DiscoveredBusiness[]>;
 }
 
 /** Provider boundary: external sources can be plugged in without changing scoring/CRM code. */
-export class ProviderRegistry {
-  constructor(private readonly providers: LeadProvider[]) {}
-
-  async searchAll(query: LeadSearchQuery): Promise<LeadProviderResult> {
-    const results = await Promise.all(this.providers.map((provider) => provider.search(query)));
-    return {
-      source: results.map((r) => r.source).join(', '),
-      records: results.flatMap((r) => r.records),
-      warnings: results.flatMap((r) => r.warnings),
-    };
-  }
-}
-
-/** Generic HTTP adapter for a compliant, authorized provider API. */
 export class ApiLeadProvider implements LeadProvider {
   constructor(private readonly endpoint: string, private readonly apiKey?: string) {}
 
-  async search(query: LeadSearchQuery): Promise<LeadProviderResult> {
+  async search(query: LeadSearchQuery): Promise<DiscoveredBusiness[]> {
     const response = await fetch(this.endpoint, {
       method: 'POST',
       headers: {
@@ -49,9 +39,15 @@ export class ApiLeadProvider implements LeadProvider {
     const data: unknown = await response.json();
     if (!Array.isArray(data)) throw new Error('Lead provider returned an invalid response');
 
-    const records = data.filter((item): item is ImportedLeadRow =>
-      typeof item === 'object' && item !== null && typeof (item as { name?: unknown }).name === 'string',
-    );
-    return { records, source: this.endpoint, warnings: [] };
+    return data.filter((item): item is DiscoveredBusiness =>
+      typeof item === 'object' &&
+      item !== null &&
+      typeof (item as { name?: unknown }).name === 'string',
+    ).map((item) => ({
+      ...item,
+      source: typeof (item as { source?: unknown }).source === 'string'
+        ? (item as { source: string }).source
+        : this.endpoint,
+    }));
   }
 }
