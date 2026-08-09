@@ -11,7 +11,7 @@ export class LeadService {
     const pipeline = processImportedLead(context.accountId, input, source, targetIndustry);
     if (!pipeline) throw new Error('Invalid lead');
 
-    await this.store.saveBusiness(pipeline.business);
+    await this.store.saveBusiness(context.accountId, pipeline.business);
     const now = new Date().toISOString();
     const lead: LeadRecord = {
       id: crypto.randomUUID(),
