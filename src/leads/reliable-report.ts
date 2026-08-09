@@ -1,28 +1,36 @@
 import type { BusinessRecord } from './model';
-import { buildReliabilityReport } from './reliability';
-
-export type LeadRecommendation = 'PRIORITIZE' | 'REVIEW' | 'LOW_CONFIDENCE';
+import { buildReliabilityReport, type ReliabilityReport } from './reliability';
+import { checkWebsite, type WebsiteCheck } from './website-check';
 
 export interface ReliableLeadReport {
-  reliability: ReturnType<typeof buildReliabilityReport>;
-  website: {
-    status: 'PRESENT' | 'MISSING';
-  };
-  recommendation: LeadRecommendation;
+  reliability: ReliabilityReport;
+  website: WebsiteCheck;
+  recommendation: 'PRIORITIZE' | 'REVIEW' | 'LOW_CONFIDENCE';
+  reasons: string[];
 }
 
 export async function buildReliableLeadReport(business: BusinessRecord): Promise<ReliableLeadReport> {
   const reliability = buildReliabilityReport(business);
-  const website = {
-    status: business.website?.trim() ? ('PRESENT' as const) : ('MISSING' as const),
-  };
+  const website = await checkWebsite(business.website);
+  const reasons = reliability.checks.filter((c) => c.status === 'PASS').map((c) => c.detail);
 
-  const recommendation: LeadRecommendation =
-    reliability.confidence >= 80
-      ? 'PRIORITIZE'
-      : reliability.confidence >= 50
-        ? 'REVIEW'
-        : 'LOW_CONFIDENCE';
+  if (website.status === 'REACHABLE') {
+    reasons.push('Website responded successfully during the live check.');
+  } else if (business.website) {
+    reasons.push(website.detail);
+  }
 
-  return { reliability, website, recommendation };
+  const effectiveConfidence = website.status === 'REACHABLE'
+    ? Math.min(100, reliability.confidence + 10)
+    : website.status === 'UNREACHABLE' || website.status === 'INVALID'
+      ? Math.max(0, reliability.confidence - 10)
+      : reliability.confidence;
+
+  const recommendation = effectiveConfidence >= 85
+    ? 'PRIORITIZE'
+    : effectiveConfidence >= 60
+      ? 'REVIEW'
+      : 'LOW_CONFIDENCE';
+
+  return { reliability: { ...reliability, confidence: effectiveConfidence }, website, recommendation, reasons };
 }
