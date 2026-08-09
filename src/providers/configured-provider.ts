@@ -1,12 +1,18 @@
 import { ApiLeadProvider, type LeadProvider } from './lead-provider';
+import { ApolloLeadProvider } from './apollo-provider';
 import { OpenStreetMapLeadProvider } from './openstreetmap-provider';
 
 /**
- * LeadPilot's core search works without Apollo or another paid provider.
- * OpenStreetMap supplies real public business records; optional external
- * providers can still be enabled explicitly through LEAD_PROVIDER_ENDPOINT.
+ * Use Apollo when its server-side API key is configured, while keeping the
+ * free OpenStreetMap provider as a fallback. This makes real lead discovery
+ * work even when OSM has sparse coverage for a particular country or industry.
  */
 export function configuredLeadProviders(): LeadProvider[] {
+  const apolloKey = process.env.APOLLO_API_KEY?.trim();
+  if (apolloKey) {
+    return [new ApolloLeadProvider(apolloKey), new OpenStreetMapLeadProvider()];
+  }
+
   const endpoint = process.env.LEAD_PROVIDER_ENDPOINT;
   const apiKey = process.env.LEAD_PROVIDER_API_KEY;
   if (endpoint) return [new ApiLeadProvider(endpoint, apiKey)];
