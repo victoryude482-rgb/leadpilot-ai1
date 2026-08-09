@@ -27,8 +27,12 @@ export class ApolloLeadProvider implements LeadProvider {
 
     const location = query.city || query.country;
     if (location) params.append('organization_locations[]', location);
+
+    // A LeadPilot free-text search such as "Laptop" is a market/topic search,
+    // not necessarily an exact company name. Apollo's keyword-tag filter is the
+    // appropriate organization search field for that use case.
+    if (query.keywords) params.append('q_organization_keyword_tags[]', query.keywords);
     if (query.industry) params.append('q_organization_keyword_tags[]', query.industry);
-    if (query.keywords) params.set('q_organization_name', query.keywords);
 
     const response = await fetch(`${APOLLO_ORGANIZATION_SEARCH}?${params.toString()}`, {
       method: 'POST',
