@@ -1,47 +1,30 @@
 import type { BusinessRecord } from './model';
 
-export type ReliabilityStatus = 'VERIFIED' | 'MISSING' | 'INVALID';
-
-export interface ReliabilityCheck {
-  name: 'Business name' | 'Source' | 'Website' | 'Phone' | 'Email';
-  status: ReliabilityStatus;
-  detail?: string;
-}
+export type ReliabilityLevel = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface ReliabilityReport {
+  level: ReliabilityLevel;
   confidence: number;
-  level: 'HIGH' | 'MEDIUM' | 'LOW';
-  checks: ReliabilityCheck[];
+  checks: Array<{ name: string; status: 'PASS' | 'MISSING'; detail: string }>;
 }
 
 export function buildReliabilityReport(business: BusinessRecord): ReliabilityReport {
-  const checks: ReliabilityCheck[] = [
-    {
-      name: 'Business name',
-      status: business.name.trim() ? 'VERIFIED' : 'MISSING',
-    },
-    {
-      name: 'Source',
-      status: business.source.trim() ? 'VERIFIED' : 'MISSING',
-    },
-    {
-      name: 'Website',
-      status: business.website?.trim() ? 'VERIFIED' : 'MISSING',
-    },
-    {
-      name: 'Phone',
-      status: business.phone?.trim() ? 'VERIFIED' : 'MISSING',
-    },
-    {
-      name: 'Email',
-      status: business.email?.trim() ? 'VERIFIED' : 'MISSING',
-    },
+  const checks = [
+    { name: 'Business name', present: Boolean(business.name.trim()), detail: 'A business name is available.' },
+    { name: 'Source', present: Boolean(business.source), detail: 'The discovery/import source is recorded.' },
+    { name: 'Website', present: Boolean(business.website), detail: 'A website URL is supplied; reachability requires a live server-side check.' },
+    { name: 'Phone', present: Boolean(business.phone), detail: 'A phone number is supplied; ownership is not inferred.' },
+    { name: 'Email', present: Boolean(business.email), detail: 'An email is supplied; mailbox validity is not inferred.' },
+    { name: 'Location', present: Boolean(business.city || business.country), detail: 'Location information is supplied.' },
   ];
 
-  const verified = checks.filter((check) => check.status === 'VERIFIED').length;
-  const confidence = Math.round((verified / checks.length) * 100);
-  const level: ReliabilityReport['level'] =
-    confidence >= 80 ? 'HIGH' : confidence >= 50 ? 'MEDIUM' : 'LOW';
+  const passed = checks.filter((check) => check.present).length;
+  const confidence = Math.round((passed / checks.length) * 100);
+  const level: ReliabilityLevel = confidence >= 85 ? 'HIGH' : confidence >= 60 ? 'MEDIUM' : 'LOW';
 
-  return { confidence, level, checks };
+  return {
+    level,
+    confidence,
+    checks: checks.map(({ name, present, detail }) => ({ name, status: present ? 'PASS' : 'MISSING', detail })),
+  };
 }
