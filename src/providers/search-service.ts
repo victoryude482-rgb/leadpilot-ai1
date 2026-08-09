@@ -1,41 +1,31 @@
-import type { ImportedLeadRow } from '../leads/model';
-import { ProviderRegistry, type LeadProvider, type LeadProviderResult, type LeadSearchQuery } from './lead-provider';
+import type { DiscoveredBusiness, LeadProvider, LeadSearchQuery } from './lead-provider';
 
-function normalize(value?: string): string {
-  return value?.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '') ?? '';
+export interface SearchResult {
+  records: DiscoveredBusiness[];
+  providerCount: number;
+  warnings: string[];
 }
 
-function dedupeKey(record: ImportedLeadRow): string {
-  const website = normalize(record.website);
-  if (website) return `website:${website}`;
-  return [normalize(record.name), normalize(record.city), normalize(record.country)].join('|');
-}
+export async function searchLeads(providers: LeadProvider[], query: LeadSearchQuery): Promise<SearchResult> {
+  const enabled = providers.filter(Boolean);
+  const results = await Promise.allSettled(enabled.map((provider) => provider.search(query)));
+  const records: DiscoveredBusiness[] = [];
+  const warnings: string[] = [];
 
-/** Runs the configured providers and removes duplicate businesses before downstream scoring. */
-export async function searchLeads(
-  providers: LeadProvider[],
-  query: LeadSearchQuery,
-): Promise<LeadProviderResult> {
-  if (providers.length === 0) {
-    return {
-      source: 'none',
-      records: [],
-      warnings: ['No lead provider is configured. Set LEAD_PROVIDER_ENDPOINT to enable lead discovery.'],
-    };
+  for (const result of results) {
+    if (result.status === 'fulfilled') records.push(...result.value);
+    else warnings.push(result.reason instanceof Error ? result.reason.message : 'Lead provider failed');
   }
 
-  const registry = new ProviderRegistry(providers);
-  const found = await registry.searchAll(query);
   const seen = new Set<string>();
-  const records: ImportedLeadRow[] = [];
-
-  for (const record of found.records) {
-    const key = dedupeKey(record);
-    if (!key || seen.has(key)) continue;
+  const unique = records.filter((record) => {
+    const key = [record.name, record.website, record.city, record.country]
+      .map((value) => (value ?? '').toLowerCase().trim())
+      .join('|');
+    if (seen.has(key)) return false;
     seen.add(key);
-    records.push(record);
-    if (query.limit && records.length >= query.limit) break;
-  }
+    return true;
+  });
 
-  return { ...found, records };
+  return { records: unique, providerCount: enabled.length, warnings };
 }
