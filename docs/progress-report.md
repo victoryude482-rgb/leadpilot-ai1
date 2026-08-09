@@ -12,22 +12,24 @@
 
 - MVP product direction documented.
 - Shared lead-scoring concept established.
-- Development branch created for lead-import work.
-- Agent memory and integration contract added.
-- Connected build plan added.
+- Shared agent memory and integration contract added.
 - Free-first provider architecture specified.
+- Lead-provider abstraction and search/deduplication pipeline added.
+- Business verification and transparent lead scoring added.
+- Reliability reporting and live website reachability checks added.
+- Account-scoped lead/business persistence and Supabase migration schema added.
+- Lead Finder API and frontend search/results flow added.
+- GitHub Actions quality workflow added.
 
-## Memory architecture
-
-The planned shared memory is split into account memory, lead memory, conversation memory, and system memory. Agents use canonical IDs and structured events so information is shared rather than copied between agents.
-
-## Agent connection flow
+## Connected agent flow
 
 `Lead Finder → Verification → Scoring → CRM → Outreach → Conversation/Sales Agent → CRM`
 
+Agents share canonical account/lead/business IDs and structured memory/events rather than isolated copies of lead records.
+
 ## Current work
 
-Lead import and canonical business/lead storage are next. Verification, scoring, shared memory persistence, and CRM will then be wired into the same data model.
+The lead-finder milestone is implemented on `codex/lead-import-v2`. The remaining work is validation and hardening: get the quality workflow green, then wire production provider/auth/database configuration and deployment.
 
 ## Safety/data-quality rules
 
@@ -40,4 +42,4 @@ Lead import and canonical business/lead storage are next. Verification, scoring,
 
 ## Next milestone
 
-Implement the actual lead import/database layer and connect it to the shared memory contract.
+Make CI green on the current branch, then complete production configuration and deployment readiness.
