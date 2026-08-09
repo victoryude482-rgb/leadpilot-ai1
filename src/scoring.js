@@ -34,6 +34,6 @@ export function scoreLead(lead) {
 export function classifyLead(score) {
   if (score >= 95) return 'HOT';
   if (score >= 80) return 'HIGH';
-  if (score >= 60) return 'POTENTIAL';
+  if (score >= 50) return 'POTENTIAL';
   return 'LOW';
 }
