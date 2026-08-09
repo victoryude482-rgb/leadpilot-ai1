@@ -1,0 +1,12 @@
+{
+  "name": "leadpilot-ai",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Free-first B2B lead intelligence and sales workflow MVP",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
