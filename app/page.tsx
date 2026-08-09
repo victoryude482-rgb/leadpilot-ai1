@@ -55,7 +55,6 @@ export default function Home() {
         body: JSON.stringify({
           keywords: query,
           city: location,
-          country: location,
           industry,
           limit: Number(limit),
         }),
@@ -109,7 +108,8 @@ export default function Home() {
         {visibleLeads.length > 0 ? <div className="grid">{visibleLeads.map((lead, i) => {
           const company = lead.business?.name || lead.company || lead.name || 'Unnamed business';
           const locationText = lead.business?.location || [lead.business?.city, lead.business?.country].filter(Boolean).join(', ') || location || 'Location pending';
-          return <article className="lead" key={lead.id || `${company}-${i}`}><div className="leadTop"><div className="avatar">{company.slice(0, 1).toUpperCase()}</div><div><h3>{company}</h3><p>{lead.business?.industry || industry || 'B2B prospect'}</p></div><strong className="score">{lead.score ?? '—'}</strong></div><div className="meta"><span>{locationText}</span><span>{lead.email || lead.business?.email || 'Email not listed'}</span><span>{lead.phone || lead.business?.phone || 'Phone not listed'}</span></div>{lead.website && <a href={lead.website} target="_blank" rel="noreferrer">Visit website ↗</a>}</article>;
+          const website = lead.website || lead.business?.website;
+          return <article className="lead" key={lead.id || `${company}-${i}`}><div className="leadTop"><div className="avatar">{company.slice(0, 1).toUpperCase()}</div><div><h3>{company}</h3><p>{lead.business?.industry || industry || 'B2B prospect'}</p></div><strong className="score">{lead.score ?? '—'}</strong></div><div className="meta"><span>{locationText}</span><span>{lead.email || lead.business?.email || 'Email not listed'}</span><span>{lead.phone || lead.business?.phone || 'Phone not listed'}</span></div>{website && <a href={website} target="_blank" rel="noreferrer">Visit website ↗</a>}</article>;
         })}</div> : <div className="empty"><div className="emptyIcon">⌕</div><h3>Start your first lead search</h3><p>Sign in above, then search a real location and market. LeadPilot will query its built-in public business source and return only records it can actually find.</p></div>}
       </section>
 
