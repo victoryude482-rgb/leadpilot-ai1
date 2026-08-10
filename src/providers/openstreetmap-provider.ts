@@ -6,7 +6,9 @@ const OVERPASS_ENDPOINTS = [
   'https://overpass.private.coffee/api/interpreter',
 ];
 const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
-const USER_AGENT = 'LeadPilotAI/0.2 (+https://github.com/victoryude482-rgb/leadpilot-ai1)';
+const USER_AGENT = 'LeadPilotAI/0.3 (+https://github.com/victoryude482-rgb/leadpilot-ai1)';
+const GEOCODE_TIMEOUT_MS = 5000;
+const OVERPASS_TIMEOUT_MS = 9000;
 
 interface OverpassElement {
   type: 'node' | 'way' | 'relation';
@@ -60,7 +62,6 @@ function mapElement(element: OverpassElement, query: LeadSearchQuery): Discovere
   const tags = element.tags ?? {};
   const name = tags.name?.trim();
   if (!name) return null;
-
   return {
     name,
     website: tags.website || tags['contact:website'],
@@ -80,24 +81,36 @@ function buildTagQueries(query: LeadSearchQuery): string[] {
   return matched?.tags ?? ['shop', 'office', 'amenity~"^(business_centre|coworking_space)$"'];
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function geocode(location: string): Promise<GeocodeResult | null> {
   const url = new URL(NOMINATIM_ENDPOINT);
   url.searchParams.set('q', location);
   url.searchParams.set('format', 'json');
   url.searchParams.set('limit', '1');
-  const response = await fetch(url, {
-    headers: { accept: 'application/json', 'user-agent': USER_AGENT },
-    cache: 'no-store',
-  });
-  if (!response.ok) return null;
-  const data = await response.json() as GeocodeResult[];
-  return data[0] ?? null;
+  try {
+    const response = await fetchWithTimeout(url, {
+      headers: { accept: 'application/json', 'user-agent': USER_AGENT },
+      cache: 'no-store',
+    }, GEOCODE_TIMEOUT_MS);
+    if (!response.ok) return null;
+    const data = await response.json() as GeocodeResult[];
+    return data[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function buildSearchArea(result: GeocodeResult): string {
-  if (result.osm_type === 'relation' && result.osm_id) {
-    return `area(${3600000000 + result.osm_id})`;
-  }
+  if (result.osm_type === 'relation' && result.osm_id) return `area(${3600000000 + result.osm_id})`;
   const box = result.boundingbox;
   if (!box || box.length !== 4) throw new Error('Could not determine the geographic area for that location.');
   const [south, north, west, east] = box.map(Number);
@@ -109,17 +122,16 @@ function buildOverpassQuery(searchArea: string, query: LeadSearchQuery, includeN
   const nameClause = includeNameSearch && keyword
     ? `nwr(${searchArea})[name~"${escapeRegex(keyword)}",i];`
     : '';
-  const tagClauses = buildTagQueries(query)
-    .map((tag) => `nwr(${searchArea})[${tag}];`)
-    .join('\n');
-  return `[out:json][timeout:25];\n(\n${nameClause}\n${tagClauses}\n);\nout center ${Math.min(Math.max(query.limit ?? 10, 1), 50)};`;
+  const tagClauses = buildTagQueries(query).map((tag) => `nwr(${searchArea})[${tag}];`).join('\n');
+  const limit = Math.min(Math.max(query.limit ?? 10, 1), 50);
+  return `[out:json][timeout:8];\n(\n${nameClause}\n${tagClauses}\n);\nout center ${limit};`;
 }
 
 async function overpass(searchQuery: string): Promise<OverpassElement[]> {
   let lastError = '';
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetchWithTimeout(endpoint, {
         method: 'POST',
         headers: {
           'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
@@ -128,7 +140,7 @@ async function overpass(searchQuery: string): Promise<OverpassElement[]> {
         },
         body: new URLSearchParams({ data: searchQuery }),
         cache: 'no-store',
-      });
+      }, OVERPASS_TIMEOUT_MS);
       if (!response.ok) {
         lastError = `Overpass ${response.status}`;
         continue;
@@ -136,7 +148,7 @@ async function overpass(searchQuery: string): Promise<OverpassElement[]> {
       const data = await response.json() as { elements?: OverpassElement[] };
       return data.elements ?? [];
     } catch (error) {
-      lastError = error instanceof Error ? error.message : 'network error';
+      lastError = error instanceof Error && error.name === 'AbortError' ? 'timeout' : error instanceof Error ? error.message : 'network error';
     }
   }
   throw new Error(`OpenStreetMap search is temporarily unavailable${lastError ? ` (${lastError})` : ''}. Please try again.`);
@@ -153,15 +165,14 @@ export class OpenStreetMapLeadProvider implements LeadProvider {
     const searchArea = buildSearchArea(place);
     const limit = Math.min(Math.max(query.limit ?? 10, 1), 50);
 
+    // First query the business categories. Only do the slower name-match query
+    // when the category query returns nothing.
     let elements = await overpass(buildOverpassQuery(searchArea, query, false));
-    if (!elements.length) {
+    if (!elements.length && (query.keywords || query.industry)) {
       elements = await overpass(buildOverpassQuery(searchArea, query, true));
     }
 
-    const records = elements
-      .map((element) => mapElement(element, query))
-      .filter((item): item is DiscoveredBusiness => Boolean(item));
-
+    const records = elements.map((element) => mapElement(element, query)).filter((item): item is DiscoveredBusiness => Boolean(item));
     const seen = new Set<string>();
     return records.filter((record) => {
       const key = `${record.name.toLowerCase()}|${(record.city ?? '').toLowerCase()}|${(record.country ?? '').toLowerCase()}`;
