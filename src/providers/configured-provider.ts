@@ -1,12 +1,10 @@
 import { ApiLeadProvider, type LeadProvider } from './lead-provider';
 import { ApolloLeadProvider } from './apollo-provider';
 import { OpenStreetMapLeadProvider } from './openstreetmap-provider';
+import { PhotonLeadProvider } from './photon-provider';
 import { DuckDuckGoLeadProvider, SearXNGLeadProvider, TavilyLeadProvider } from './web-search-provider';
 
-/**
- * Multi-source discovery. Keyed providers are optional; the free deployment
- * always has DuckDuckGo web discovery plus OSM available as fallbacks.
- */
+/** Multi-source discovery with free fallbacks enabled by default. */
 export function configuredLeadProviders(): LeadProvider[] {
   const providers: LeadProvider[] = [];
 
@@ -24,9 +22,9 @@ export function configuredLeadProviders(): LeadProvider[] {
     providers.push(new ApolloLeadProvider(apolloKey));
   }
 
-  // No-key web discovery makes the free deployment useful even before optional
-  // API credentials are configured.
+  // Free, no-key sources: web search + fast global OSM-derived place discovery.
   providers.push(new DuckDuckGoLeadProvider());
+  providers.push(new PhotonLeadProvider());
   providers.push(new OpenStreetMapLeadProvider());
 
   return providers;
