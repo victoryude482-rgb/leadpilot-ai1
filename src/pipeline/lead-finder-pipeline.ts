@@ -1,4 +1,4 @@
-import type { LeadProvider, LeadSearchQuery, DiscoveredBusiness } from '../providers/lead-provider';
+import type { LeadProvider, LeadSearchQuery } from '../providers/lead-provider';
 import { searchLeads } from '../providers/search-service';
 import { buildReliableLeadReport } from '../leads/reliable-report';
 import { scoreLead } from '../leads/scoring';
@@ -17,9 +17,10 @@ export async function runLeadFinderPipeline(
   query: LeadSearchQuery,
 ): Promise<{ results: FinderPipelineResult[]; warnings: string[] }> {
   const found = await searchLeads(providers, query);
-  const results: FinderPipelineResult[] = [];
+  const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
+  const candidates = found.records.slice(0, limit);
 
-  for (const discovered of found.records) {
+  const results = await Promise.all(candidates.map(async (discovered) => {
     const business: BusinessRecord = {
       id: crypto.randomUUID(),
       name: discovered.name,
@@ -37,21 +38,21 @@ export async function runLeadFinderPipeline(
     const report = await buildReliableLeadReport(business);
     const now = new Date().toISOString();
 
-    results.push({
+    return {
       business,
       lead: {
         id: crypto.randomUUID(),
         accountId,
         businessId: business.id,
-        status: 'NEW',
+        status: 'NEW' as const,
         score: scoring.score,
         scoreLabel: scoring.label,
         createdAt: now,
         updatedAt: now,
       },
       report,
-    });
-  }
+    };
+  }));
 
   return { results, warnings: found.warnings };
 }
