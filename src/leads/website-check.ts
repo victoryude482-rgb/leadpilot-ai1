@@ -15,11 +15,8 @@ export function validateWebsiteUrl(value?: string): URL | null {
   }
 }
 
-/**
- * Server-side adapter. Keep network checks behind this function so production
- * can add DNS/private-network/redirect protections before fetching arbitrary URLs.
- */
-export async function checkWebsite(value?: string, timeoutMs = 5000): Promise<WebsiteCheck> {
+/** Fast, bounded reachability check. Discovery must never wait on a slow website. */
+export async function checkWebsite(value?: string, timeoutMs = 1500): Promise<WebsiteCheck> {
   const url = validateWebsiteUrl(value);
   if (!url) return { status: value ? 'INVALID' : 'NOT_CHECKED', detail: value ? 'Invalid HTTP(S) URL.' : 'No website supplied.' };
 
