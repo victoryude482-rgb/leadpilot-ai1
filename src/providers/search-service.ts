@@ -6,17 +6,13 @@ export interface SearchResult {
   warnings: string[];
 }
 
-const PROVIDER_TIMEOUT_MS = 3000;
+const PROVIDER_TIMEOUT_MS = 5000;
 
 async function searchProviderFast(provider: LeadProvider, query: LeadSearchQuery): Promise<DiscoveredBusiness[]> {
   return Promise.race([
     provider.search(query),
     new Promise<never>((_, reject) => {
-      const timer = setTimeout(() => {
-        const error = new Error('provider timed out');
-        error.name = 'ProviderTimeout';
-        reject(error);
-      }, PROVIDER_TIMEOUT_MS);
+      const timer = setTimeout(() => reject(new Error('provider timed out')), PROVIDER_TIMEOUT_MS);
       timer.unref?.();
     }),
   ]);
@@ -47,14 +43,28 @@ function rank(records: DiscoveredBusiness[]): DiscoveredBusiness[] {
 export async function searchLeads(providers: LeadProvider[], query: LeadSearchQuery): Promise<SearchResult> {
   const enabled = providers.filter(Boolean);
   const warnings: string[] = [];
-  const results = await Promise.allSettled(enabled.map((provider) => searchProviderFast(provider, query)));
-  const records = results.flatMap((result, index) => {
-    if (result.status === 'fulfilled') return result.value;
-    const provider = enabled[index];
-    const message = result.reason instanceof Error ? result.reason.message : 'search failed';
-    warnings.push(`${provider.constructor.name}: ${message}`);
-    return [];
-  });
+
+  const run = async (q: LeadSearchQuery) => {
+    const settled = await Promise.allSettled(enabled.map((provider) => searchProviderFast(provider, q)));
+    return settled.flatMap((result, index) => {
+      if (result.status === 'fulfilled') return result.value;
+      const provider = enabled[index];
+      const message = result.reason instanceof Error ? result.reason.message : 'search failed';
+      warnings.push(`${provider.constructor.name}: ${message}`);
+      return [];
+    });
+  };
+
+  let records = await run(query);
+
+  // Retry once with a broader business query if a very specific phrase returned nothing.
+  if (records.length === 0) {
+    const broader = {
+      ...query,
+      keywords: [query.industry, query.keywords].filter(Boolean).join(' ').trim() || 'business',
+    };
+    if (broader.keywords !== query.keywords) records = await run(broader);
+  }
 
   const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
   return { records: rank(dedupe(records)).slice(0, limit), providerCount: enabled.length, warnings };
