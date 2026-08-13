@@ -19,8 +19,6 @@ export async function handleLeadFinder(
     };
   }
 
-  // Public discovery is allowed without an account. Authenticated searches
-  // keep the user's id so workspace persistence can be added later.
   const accountId = auth?.accountId ?? 'public-search';
 
   const result = await runLeadFinderPipeline(accountId, providers, {
@@ -31,16 +29,8 @@ export async function handleLeadFinder(
     limit: Math.min(Math.max(request.limit ?? 25, 1), 100),
   });
 
-  if (result.results.length === 0 && result.warnings.length > 0) {
-    return {
-      status: 502 as const,
-      body: {
-        error: result.warnings.join(' · '),
-        warnings: result.warnings,
-      },
-    };
-  }
-
+  // Provider failures are warnings, not a failed search. The multi-source
+  // layer is specifically designed to survive one or more unavailable sources.
   return {
     status: 200 as const,
     body: {
