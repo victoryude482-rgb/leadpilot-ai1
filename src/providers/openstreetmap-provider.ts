@@ -81,7 +81,7 @@ function buildTagQueries(query: LeadSearchQuery): string[] {
   return matched?.tags ?? ['shop', 'office', 'amenity~"^(business_centre|coworking_space)$"'];
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+async function fetchWithTimeout(url: string | URL, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -138,7 +138,7 @@ async function overpass(searchQuery: string): Promise<OverpassElement[]> {
           accept: 'application/json',
           'user-agent': USER_AGENT,
         },
-        body: new URLSearchParams({ data: searchQuery }),
+        body: new URLSearchParams({ data: searchQuery }).toString(),
         cache: 'no-store',
       }, OVERPASS_TIMEOUT_MS);
       if (!response.ok) {
@@ -148,37 +148,21 @@ async function overpass(searchQuery: string): Promise<OverpassElement[]> {
       const data = await response.json() as { elements?: OverpassElement[] };
       return data.elements ?? [];
     } catch (error) {
-      lastError = error instanceof Error && error.name === 'AbortError' ? 'timeout' : error instanceof Error ? error.message : 'network error';
+      lastError = error instanceof Error ? error.message : 'Overpass request failed';
     }
   }
-  throw new Error(`OpenStreetMap search is temporarily unavailable${lastError ? ` (${lastError})` : ''}. Please try again.`);
+  throw new Error(lastError || 'OpenStreetMap search is temporarily unavailable');
 }
 
 export class OpenStreetMapLeadProvider implements LeadProvider {
   async search(query: LeadSearchQuery): Promise<DiscoveredBusiness[]> {
-    const location = (query.city || query.country || '').trim();
-    if (!location) throw new Error('Enter a city or country so LeadPilot can search a real geographic area.');
-
-    const place = await geocode(location);
-    if (!place) throw new Error(`I could not locate "${location}". Try a city such as Lagos or a country such as Nigeria.`);
-
-    const searchArea = buildSearchArea(place);
-    const limit = Math.min(Math.max(query.limit ?? 10, 1), 50);
-
-    // First query the business categories. Only do the slower name-match query
-    // when the category query returns nothing.
-    let elements = await overpass(buildOverpassQuery(searchArea, query, false));
-    if (!elements.length && (query.keywords || query.industry)) {
-      elements = await overpass(buildOverpassQuery(searchArea, query, true));
-    }
-
-    const records = elements.map((element) => mapElement(element, query)).filter((item): item is DiscoveredBusiness => Boolean(item));
-    const seen = new Set<string>();
-    return records.filter((record) => {
-      const key = `${record.name.toLowerCase()}|${(record.city ?? '').toLowerCase()}|${(record.country ?? '').toLowerCase()}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    }).slice(0, limit);
+    const location = [query.city, query.country].filter(Boolean).join(', ');
+    if (!location) throw new Error('OpenStreetMap requires a city or country.');
+    const geocoded = await geocode(location);
+    if (!geocoded) throw new Error(`Could not locate ${location}.`);
+    const area = buildSearchArea(geocoded);
+    const primary = await overpass(buildOverpassQuery(area, query, true));
+    const mapped = primary.map((element) => mapElement(element, query)).filter((value): value is DiscoveredBusiness => Boolean(value));
+    return mapped.slice(0, Math.min(Math.max(query.limit ?? 10, 1), 50));
   }
 }
