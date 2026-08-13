@@ -6,36 +6,65 @@ export interface SearchResult {
   warnings: string[];
 }
 
-const PROVIDER_TIMEOUT_MS = 3500;
+// Keep individual sources responsive without making a slow source block the UI.
+const PROVIDER_TIMEOUT_MS = 5000;
 
 async function searchProviderFast(provider: LeadProvider, query: LeadSearchQuery): Promise<DiscoveredBusiness[]> {
-  const timeout = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Provider timed out')), PROVIDER_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
+  try {
+    return await Promise.race([
+      provider.search(query),
+      new Promise<never>((_, reject) => {
+        const error = new Error(`Provider ${provider.constructor.name} timed out`);
+        error.name = 'ProviderTimeout';
+        setTimeout(() => reject(error), PROVIDER_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+    controller.abort();
+  }
+}
+
+function dedupe(records: DiscoveredBusiness[]): DiscoveredBusiness[] {
+  const seen = new Set<string>();
+  return records.filter((record) => {
+    const key = [record.website, record.phone, record.email, record.name, record.address, record.city, record.country]
+      .map((value) => (value ?? '').toLowerCase().replace(/[^a-z0-9]/g, ''))
+      .filter(Boolean)
+      .slice(0, 4)
+      .join('|');
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
-  return Promise.race([provider.search(query), timeout]);
+}
+
+function rank(records: DiscoveredBusiness[]): DiscoveredBusiness[] {
+  return [...records].sort((a, b) => {
+    const score = (record: DiscoveredBusiness) =>
+      (record.website ? 3 : 0) + (record.phone ? 2 : 0) + (record.email ? 2 : 0) +
+      (record.address ? 1 : 0) + (record.city ? 1 : 0) + (record.country ? 1 : 0);
+    return score(b) - score(a);
+  });
 }
 
 export async function searchLeads(providers: LeadProvider[], query: LeadSearchQuery): Promise<SearchResult> {
   const enabled = providers.filter(Boolean);
-  const settled = await Promise.allSettled(enabled.map((provider) => searchProviderFast(provider, query)));
-  const records: DiscoveredBusiness[] = [];
   const warnings: string[] = [];
-
-  for (const result of settled) {
-    if (result.status === 'fulfilled') records.push(...result.value);
-    else warnings.push(result.reason instanceof Error ? result.reason.message : 'Lead provider failed');
-  }
-
-  const seen = new Set<string>();
-  const unique = records.filter((record) => {
-    const key = [record.name, record.website, record.phone, record.city, record.country]
-      .map((value) => (value ?? '').toLowerCase().trim())
-      .join('|');
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+  const results = await Promise.allSettled(enabled.map((provider) => searchProviderFast(provider, query)));
+  const records = results.flatMap((result, index) => {
+    if (result.status === 'fulfilled') return result.value;
+    const provider = enabled[index];
+    warnings.push(`${provider.constructor.name}: ${result.reason instanceof Error ? result.reason.message : 'search failed'}`);
+    return [];
   });
 
   const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
-  return { records: unique.slice(0, limit), providerCount: enabled.length, warnings };
+  return {
+    records: rank(dedupe(records)).slice(0, limit),
+    providerCount: enabled.length,
+    warnings,
+  };
 }
