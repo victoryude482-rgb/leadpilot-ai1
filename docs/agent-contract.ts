@@ -7,6 +7,7 @@ export type AgentName =
   | 'outreach'
   | 'ecommerce-opportunity'
   | 'content'
+  | 'command-agent'
   | 'verification'
   | 'scoring'
   | 'crm'
