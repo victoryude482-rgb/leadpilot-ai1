@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import QualityOverlay from '@/src/components/quality-overlay';
 import CommandDashboard from '@/src/components/command-dashboard';
 
 export const metadata: Metadata = {
@@ -11,7 +10,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body><QualityOverlay /><CommandDashboard />{children}</body>
+      <body><CommandDashboard />{children}</body>
     </html>
   );
 }
