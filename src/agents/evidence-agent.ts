@@ -20,12 +20,14 @@ export async function runEvidenceAgent(
   providers?: LeadProvider[],
 ): Promise<EvidenceAgentResult> {
   const sourceProviders = providers ?? configuredLeadProviders();
-  const evidenceProviders = agent === 'trend-finder'
-    ? [...sourceProviders, new NewsTrendProvider(), new RedditTrendProvider()]
-    : sourceProviders;
+  const evidenceProviders = [
+    ...sourceProviders,
+    new RedditTrendProvider(),
+    ...(agent === 'trend-finder' ? [new NewsTrendProvider()] : []),
+  ];
 
   const keywordsByAgent: Record<typeof agent, string> = {
-    'trend-finder': `emerging trend ${query} market demand news reddit`,
+    'trend-finder': `emerging trend ${query} market demand news`,
     'opportunity-finder': `${query} business opportunity companies need`,
     'tender-finder': `${query} tender procurement contract request for proposal`,
     'ecommerce-opportunity': `${query} product demand market opportunity ecommerce`,
@@ -44,8 +46,8 @@ export async function runEvidenceAgent(
     strategy: [
       'Expanded the natural-language request into evidence-oriented search terms.',
       agent === 'trend-finder'
-        ? 'Included public news and Reddit as complementary trend signals.'
-        : 'Queried the configured multi-source discovery providers in parallel.',
+        ? 'Included public Reddit and news as complementary trend signals.'
+        : 'Queried configured discovery providers plus Reddit for community demand signals.',
       'Returned only source-backed records; no synthetic opportunities were created.',
     ],
   };
