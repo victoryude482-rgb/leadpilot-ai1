@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import QualityOverlay from '@/components/quality-overlay';
+import QualityOverlay from '@/src/components/quality-overlay';
 
 export const metadata: Metadata = {
   title: 'LeadPilot AI',
