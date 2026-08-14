@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import QualityOverlay from '@/src/components/quality-overlay';
+import CommandAgent from '@/src/components/command-agent';
 
 export const metadata: Metadata = {
   title: 'LeadPilot AI',
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body><QualityOverlay />{children}</body>
+      <body><QualityOverlay /><CommandAgent />{children}</body>
     </html>
   );
 }
