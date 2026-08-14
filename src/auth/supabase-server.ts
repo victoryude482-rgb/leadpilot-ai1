@@ -21,5 +21,5 @@ export async function getSupabaseAuthenticatedUser(
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) return null;
 
-  return { id: data.user.id };
+  return { id: data.user.id, email: data.user.email ?? undefined };
 }
