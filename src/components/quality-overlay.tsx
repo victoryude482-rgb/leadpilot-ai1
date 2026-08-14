@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { classifyLeadScore } from '@/agents/quality-summary';
+import { classifyLeadScore } from '@/src/agents/quality-summary';
 
 const styles = `
 .quality-overlay-badge{display:inline-flex;align-items:center;gap:5px;margin-left:8px;padding:3px 7px;border-radius:999px;font-size:9px;font-weight:800;letter-spacing:.08em;vertical-align:middle;border:1px solid}
