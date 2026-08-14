@@ -1,9 +1,15 @@
 export type AgentName =
   | 'lead-finder'
+  | 'trend-finder'
+  | 'opportunity-finder'
+  | 'tender-finder'
+  | 'competitor-monitor'
+  | 'outreach'
+  | 'ecommerce-opportunity'
+  | 'content'
   | 'verification'
   | 'scoring'
   | 'crm'
-  | 'outreach'
   | 'sales';
 
 export type AgentEventType =
@@ -11,6 +17,10 @@ export type AgentEventType =
   | 'lead.verified'
   | 'lead.scored'
   | 'lead.status_changed'
+  | 'opportunity.discovered'
+  | 'trend.discovered'
+  | 'tender.discovered'
+  | 'competitor.changed'
   | 'outreach.drafted'
   | 'outreach.sent'
   | 'conversation.updated'
@@ -43,10 +53,15 @@ export interface MemoryRecord<T = Record<string, unknown>> {
   updatedAt: string;
 }
 
-/**
- * Agents communicate through canonical IDs and durable events.
- * They must not copy entire lead records into private agent state.
- */
+export interface AgentDefinition {
+  id: AgentName;
+  name: string;
+  description: string;
+  category: 'research' | 'sales' | 'monitoring' | 'content';
+  status: 'live' | 'beta' | 'planned';
+  capabilities: string[];
+}
+
 export interface AgentMemoryStore {
   getRelevantMemory(query: {
     accountId: string;
