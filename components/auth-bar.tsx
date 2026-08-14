@@ -30,40 +30,21 @@ export default function AuthBar({ onTokenChange }: Props) {
     return () => { active = false; data.subscription.unsubscribe(); };
   }, [client, onTokenChange]);
 
-  function switchMode(nextMode: Mode) {
-    setMode(nextMode);
-    setMessage('');
-  }
-
   async function submitAuth(event: FormEvent) {
     event.preventDefault();
     if (!client || !email.trim() || !password) return;
-
-    setBusy(true);
-    setMessage('');
-
+    setBusy(true); setMessage('');
     if (mode === 'signup') {
       const { data, error } = await client.auth.signUp({
-        email: email.trim(),
-        password,
+        email: email.trim(), password,
         options: { emailRedirectTo: window.location.origin },
       });
-
-      if (error) {
-        setMessage(error.message);
-      } else if (data.session) {
-        setMessage('Account created. You are signed in.');
-      } else {
-        setMessage('Account created. Check your email to confirm your account.');
-      }
+      if (error) setMessage(error.message);
+      else setMessage(data.session ? 'Account created. You are signed in.' : 'Account created. Check your email to confirm.');
     } else {
-      const { error } = await client.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const { error } = await client.auth.signInWithPassword({ email: email.trim(), password });
       setMessage(error ? error.message : 'Signed in successfully.');
     }
-
     setBusy(false);
   }
 
@@ -73,52 +54,36 @@ export default function AuthBar({ onTokenChange }: Props) {
     setMessage('Signed out.');
   }
 
-  if (!client) return <span className="authMissing">AUTH NOT CONFIGURED</span>;
-  if (userEmail) return <div className="authSigned"><span>{userEmail}</span><button type="button" onClick={signOut}>Sign out</button></div>;
+  if (!client) return <span className="victory-auth-missing">AUTH NOT CONFIGURED</span>;
+  if (userEmail) return <div className="victory-auth-signed"><span title={userEmail}>{userEmail}</span><button type="button" onClick={signOut}>Sign out</button></div>;
 
-  return <div className="authWrap">
-    <div className="authTabs" role="tablist" aria-label="Account access">
-      <button
-        type="button"
-        className={mode === 'signin' ? 'authTab active' : 'authTab'}
-        onClick={() => switchMode('signin')}
-        aria-selected={mode === 'signin'}
-      >
-        Sign in
-      </button>
-      <button
-        type="button"
-        className={mode === 'signup' ? 'authTab active' : 'authTab'}
-        onClick={() => switchMode('signup')}
-        aria-selected={mode === 'signup'}
-      >
-        Sign up
-      </button>
+  return <div className="victory-auth">
+    <div className="victory-auth-tabs" role="tablist" aria-label="Account access">
+      <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => { setMode('signin'); setMessage(''); }}>Sign in</button>
+      <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); setMessage(''); }}>Sign up</button>
     </div>
-
-    <form onSubmit={submitAuth} className="authForm">
-      <input
-        value={email}
-        onChange={e => setEmail(e.target.value)}
-        type="email"
-        placeholder="Email address"
-        autoComplete="email"
-        required
-      />
-      <input
-        value={password}
-        onChange={e => setPassword(e.target.value)}
-        type="password"
-        placeholder="Password"
-        autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-        minLength={6}
-        required
-      />
-      <button type="submit" disabled={busy}>
-        {busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}
-      </button>
+    <form onSubmit={submitAuth} className="victory-auth-form">
+      <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Email address" autoComplete="email" required />
+      <input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="Password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={6} required />
+      <button type="submit" disabled={busy}>{busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}</button>
     </form>
-
-    {message && <span className="authMessage">{message}</span>}
+    {message && <span className="victory-auth-message">{message}</span>}
+    <style jsx>{`
+      .victory-auth{display:flex;align-items:center;justify-content:flex-end;gap:8px;max-width:100%;position:relative}
+      .victory-auth-tabs{display:flex;gap:4px;flex:0 0 auto}
+      .victory-auth button{font:600 11px/1.2 Inter,system-ui,sans-serif;cursor:pointer;box-sizing:border-box;white-space:nowrap}
+      .victory-auth-tabs button,.victory-auth-form button,.victory-auth-signed button{height:34px;padding:0 11px;border:1px solid #2b4557;border-radius:8px;background:#10222e;color:#a9e7d6}
+      .victory-auth-tabs button.active,.victory-auth-form button{background:#74dfbd;color:#06140f;border-color:#74dfbd;font-weight:800}
+      .victory-auth-form{display:flex;align-items:center;gap:6px;margin:0}
+      .victory-auth-form input{width:145px!important;height:34px!important;min-width:0!important;margin:0!important;padding:0 9px!important;border:1px solid #2a4655!important;border-radius:8px!important;background:#07121b!important;color:#e8f3f7!important;font:11px Inter,system-ui,sans-serif!important;box-sizing:border-box!important;outline:none!important}
+      .victory-auth-form input::placeholder{color:#6f8799}
+      .victory-auth-form button:disabled{opacity:.55;cursor:wait}
+      .victory-auth-signed{display:flex;align-items:center;gap:8px;max-width:340px;color:#91a6b6;font:10px Inter,system-ui,sans-serif}
+      .victory-auth-signed>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .victory-auth-message{position:absolute;right:0;top:42px;z-index:20;max-width:300px;padding:8px 10px;border:1px solid #2b4557;border-radius:8px;background:#10222e;color:#b9d0dc;font:10px/1.4 Inter,system-ui,sans-serif;box-shadow:0 10px 25px rgba(0,0,0,.3)}
+      .victory-auth-missing{color:#ff9da5;font:9px Inter,system-ui,sans-serif}
+      @media(max-width:760px){.victory-auth{flex-direction:column;align-items:stretch;gap:6px}.victory-auth-tabs{justify-content:flex-end}.victory-auth-form{display:grid;grid-template-columns:1fr 1fr auto}.victory-auth-form input{width:100%!important}.victory-auth-form button{width:auto}.victory-auth-message{right:0;top:74px}.victory-auth-signed{max-width:100%;justify-content:flex-end}}
+      @media(max-width:430px){.victory-auth-form{grid-template-columns:1fr}.victory-auth-form button{width:100%}.victory-auth-tabs{justify-content:flex-start}}
+    `}</style>
   </div>;
 }
