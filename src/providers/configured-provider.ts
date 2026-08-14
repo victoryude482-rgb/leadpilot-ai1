@@ -1,4 +1,5 @@
 import { ApiLeadProvider, type LeadProvider } from './lead-provider';
+import { AgentDiscoveryLeadProvider } from './agent-discovery-provider';
 import { ApolloLeadProvider } from './apollo-provider';
 import { OpenStreetMapLeadProvider } from './openstreetmap-provider';
 import { PhotonLeadProvider } from './photon-provider';
@@ -22,7 +23,8 @@ export function configuredLeadProviders(): LeadProvider[] {
     providers.push(new ApolloLeadProvider(apolloKey));
   }
 
-  // Free, no-key sources: web search + fast global OSM-derived place discovery.
+  // Agent-powered local discovery is always available as a free fallback.
+  providers.push(new AgentDiscoveryLeadProvider());
   providers.push(new DuckDuckGoLeadProvider());
   providers.push(new PhotonLeadProvider());
   providers.push(new OpenStreetMapLeadProvider());
