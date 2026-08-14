@@ -12,7 +12,7 @@ export interface EvidenceAgentResult {
   strategy: string[];
 }
 
-/** Evidence-first adapters; no synthetic opportunities are manufactured. */
+/** Evidence-first adapters; provider failures are warnings, not fatal agent errors. */
 export async function runEvidenceAgent(
   agent: Extract<AgentName, 'trend-finder' | 'opportunity-finder' | 'tender-finder' | 'ecommerce-opportunity'>,
   query: string,
@@ -27,10 +27,10 @@ export async function runEvidenceAgent(
   ];
 
   const keywordsByAgent: Record<typeof agent, string> = {
-    'trend-finder': `emerging trend ${query} market demand news`,
-    'opportunity-finder': `${query} business opportunity companies need`,
-    'tender-finder': `${query} tender procurement contract request for proposal`,
-    'ecommerce-opportunity': `${query} product demand market opportunity ecommerce`,
+    'trend-finder': `emerging trend ${query} market demand news reddit`,
+    'opportunity-finder': `${query} business opportunity pain points demand reddit companies need`,
+    'tender-finder': `${query} tender procurement contract request for proposal reddit`,
+    'ecommerce-opportunity': `${query} product demand customer complaints buying intent reddit ecommerce`,
   };
 
   const search = await runLeadFinderPipeline('agent-research', evidenceProviders, {
@@ -45,9 +45,11 @@ export async function runEvidenceAgent(
     warnings: search.warnings,
     strategy: [
       'Expanded the natural-language request into evidence-oriented search terms.',
+      'Queried configured discovery providers plus Reddit as a community-demand signal.',
       agent === 'trend-finder'
-        ? 'Included public Reddit and news as complementary trend signals.'
-        : 'Queried configured discovery providers plus Reddit for community demand signals.',
+        ? 'Included public news as an additional trend signal.'
+        : 'Used Reddit to surface demand, pain points, and intent signals relevant to this agent.',
+      'Provider failures are isolated as warnings; available sources can still return results.',
       'Returned only source-backed records; no synthetic opportunities were created.',
     ],
   };
