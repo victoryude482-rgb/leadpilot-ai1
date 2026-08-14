@@ -1,5 +1,6 @@
 import { configuredLeadProviders } from '../providers/configured-provider';
 import { NewsTrendProvider } from '../providers/news-trend-provider';
+import { RedditTrendProvider } from '../providers/reddit-trend-provider';
 import type { AgentName } from '../../docs/agent-contract';
 import type { LeadProvider, LeadSearchQuery } from '../providers/lead-provider';
 import { runLeadFinderPipeline } from '../pipeline/lead-finder-pipeline';
@@ -11,11 +12,7 @@ export interface EvidenceAgentResult {
   strategy: string[];
 }
 
-/**
- * Evidence-first adapters for research agents. They use the normal discovery
- * layer plus specialized public evidence sources where available. They never
- * manufacture opportunities, trends or tenders.
- */
+/** Evidence-first adapters; no synthetic opportunities are manufactured. */
 export async function runEvidenceAgent(
   agent: Extract<AgentName, 'trend-finder' | 'opportunity-finder' | 'tender-finder' | 'ecommerce-opportunity'>,
   query: string,
@@ -24,11 +21,11 @@ export async function runEvidenceAgent(
 ): Promise<EvidenceAgentResult> {
   const sourceProviders = providers ?? configuredLeadProviders();
   const evidenceProviders = agent === 'trend-finder'
-    ? [...sourceProviders, new NewsTrendProvider()]
+    ? [...sourceProviders, new NewsTrendProvider(), new RedditTrendProvider()]
     : sourceProviders;
 
   const keywordsByAgent: Record<typeof agent, string> = {
-    'trend-finder': `emerging trend ${query} market demand news`,
+    'trend-finder': `emerging trend ${query} market demand news reddit`,
     'opportunity-finder': `${query} business opportunity companies need`,
     'tender-finder': `${query} tender procurement contract request for proposal`,
     'ecommerce-opportunity': `${query} product demand market opportunity ecommerce`,
@@ -47,7 +44,7 @@ export async function runEvidenceAgent(
     strategy: [
       'Expanded the natural-language request into evidence-oriented search terms.',
       agent === 'trend-finder'
-        ? 'Added a public news-feed fallback so trend discovery can continue when business directories time out.'
+        ? 'Included public news and Reddit as complementary trend signals.'
         : 'Queried the configured multi-source discovery providers in parallel.',
       'Returned only source-backed records; no synthetic opportunities were created.',
     ],
