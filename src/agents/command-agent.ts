@@ -1,5 +1,6 @@
 import type { AgentName } from '../../docs/agent-contract';
 import { runAgent, type AgentRunInput } from './runtime';
+import { classifyAutonomy } from './autonomy-policy';
 
 type CommandPlan = { agents: Exclude<AgentName, 'command-agent'>[]; query: string; explanation: string; recovery: string[] };
 
@@ -75,14 +76,6 @@ function usableLeadResult(body:any){
   return rows.filter(isVerifiedBusiness);
 }
 
-function mergeLeadOutputs(base:any, recovered:any){
-  if(!base || typeof base!=='object') return recovered;
-  const a=usableLeadResult(base); const b=usableLeadResult(recovered);
-  if(b.length>a.length) return recovered;
-  if(a.length===0 && b.length===0) return base;
-  return base;
-}
-
 async function runWithRecovery(auth: Parameters<typeof runAgent>[0], agent: Exclude<AgentName,'command-agent'>, query:string, options:Omit<AgentRunInput,'agent'|'query'>, recovery:string[]){
   let best:any=null;
   let bestCount=-1;
@@ -103,6 +96,7 @@ async function runWithRecovery(auth: Parameters<typeof runAgent>[0], agent: Excl
 
 export async function runCommand(auth: Parameters<typeof runAgent>[0], command: string, options: Omit<AgentRunInput, 'agent' | 'query'> = {}) {
   const plan = planCommand(command);
+  const autonomy = classifyAutonomy(command);
   const outputs: Array<{ agent: string; result: unknown }> = [];
   for (const agent of plan.agents) {
     try {
@@ -112,5 +106,16 @@ export async function runCommand(auth: Parameters<typeof runAgent>[0], command: 
       outputs.push({ agent, result: { error: error instanceof Error ? error.message : 'Agent failed' } });
     }
   }
-  return { plan, outputs, automation: { selfHealing: true, syntheticData: false, verifiedBusinessOnly: plan.agents.includes('lead-finder') } };
+  return {
+    plan,
+    outputs,
+    autonomy,
+    automation: {
+      selfHealing: true,
+      autonomousProblemSolving: true,
+      approvalGates: true,
+      syntheticData: false,
+      verifiedBusinessOnly: plan.agents.includes('lead-finder'),
+    },
+  };
 }
