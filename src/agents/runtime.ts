@@ -2,7 +2,7 @@ import { handleLeadFinder, type AuthContext } from '../api/lead-finder-handler';
 import { configuredLeadProviders } from '../providers/configured-provider';
 import { getAgent } from './registry';
 import { runEvidenceAgent } from './evidence-agent';
-import { planRecovery, technicalDecisionNeeded } from './self-healing';
+import { planRecovery, technicalDecisionNeeded, type TechnicalDecision } from './self-healing';
 import type { AgentName } from '../../docs/agent-contract';
 
 const EVIDENCE_AGENTS = ['trend-finder', 'opportunity-finder', 'tender-finder', 'ecommerce-opportunity'] as const;
@@ -27,6 +27,7 @@ async function runLeadFinderWithRecovery(
     limit: input.limit,
   };
   const recoveryLog: string[] = [];
+  const technicalDecisions: TechnicalDecision[] = [];
   let result = await handleLeadFinder(auth, current, providers);
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -36,10 +37,13 @@ async function runLeadFinderWithRecovery(
 
     const warnings = body.warnings ?? [];
     const decisions = planRecovery(current, warnings, results.length);
+    for (const decision of decisions) {
+      recoveryLog.push(decision.reason);
+      if (decision.technicalDecision) technicalDecisions.push(decision.technicalDecision);
+    }
     const next = decisions.find((decision) => decision.query && decision.action === 'broaden')
       ?? decisions.find((decision) => decision.query && decision.action === 'retry');
 
-    recoveryLog.push(...decisions.map((decision) => decision.reason));
     if (!next?.query) break;
     current = next.query;
     result = await handleLeadFinder(auth, current, providers);
@@ -53,6 +57,7 @@ async function runLeadFinderWithRecovery(
       attempts: recoveryLog.length ? Math.min(recoveryLog.length, 3) : 1,
       actions: recoveryLog,
       technicalDecisionNeeded: technicalDecisionNeeded(body.warnings ?? []),
+      technicalDecisions,
     },
   };
 }
@@ -60,6 +65,7 @@ async function runLeadFinderWithRecovery(
 async function runEvidenceWithRecovery(input: AgentRunInput) {
   let query = input.query;
   const recoveryLog: string[] = [];
+  const technicalDecisions: TechnicalDecision[] = [];
   let result = await runEvidenceAgent(input.agent as EvidenceAgent, query, {
     industry: input.industry,
     country: input.country,
@@ -73,9 +79,12 @@ async function runEvidenceWithRecovery(input: AgentRunInput) {
       result.warnings,
       result.results.length,
     );
+    for (const decision of decisions) {
+      recoveryLog.push(decision.reason);
+      if (decision.technicalDecision) technicalDecisions.push(decision.technicalDecision);
+    }
     const next = decisions.find((decision) => decision.query && decision.action === 'broaden')
       ?? decisions.find((decision) => decision.query && decision.action === 'retry');
-    recoveryLog.push(...decisions.map((decision) => decision.reason));
     if (!next?.query?.keywords) break;
     query = next.query.keywords;
     result = await runEvidenceAgent(input.agent as EvidenceAgent, query, {
@@ -93,6 +102,7 @@ async function runEvidenceWithRecovery(input: AgentRunInput) {
       attempts: recoveryLog.length ? Math.min(recoveryLog.length, 3) : 1,
       actions: recoveryLog,
       technicalDecisionNeeded: technicalDecisionNeeded(result.warnings),
+      technicalDecisions,
     },
   };
 }
@@ -121,7 +131,17 @@ export async function runAgent(auth: AuthContext | null, input: AgentRunInput) {
         query: input.query,
         message: `${definition.name} is registered. The agent can reason and plan autonomously, but this capability needs its source/action adapter before it can execute external actions.`,
         results: [],
-        recovery: { autonomous: true, technicalDecisionNeeded: true, actions: ['Technical activation is required for this agent; no fake result will be produced.'] },
+        recovery: {
+          autonomous: true,
+          technicalDecisionNeeded: true,
+          technicalDecisions: [{
+            type: 'integration',
+            title: `Activate ${definition.name}`,
+            reason: 'This agent needs a real source or action adapter before it can perform the external task.',
+            examples: ['Choose the provider/integration', 'Connect the required account', 'Approve the implementation approach'],
+          }],
+          actions: ['Technical activation is required for this agent; no fake result will be produced.'],
+        },
       },
     };
   }
