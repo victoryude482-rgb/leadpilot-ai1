@@ -85,6 +85,10 @@ function usableLeadResult(body:any){
   return rows.filter(isVerifiedBusiness);
 }
 
+function resultBody(result: Awaited<ReturnType<typeof runAgent>>) {
+  return result && typeof result === 'object' && 'body' in result ? result.body : result;
+}
+
 async function runWithRecovery(auth: Parameters<typeof runAgent>[0], agent: Exclude<AgentName,'command-agent'>, query:string, options:Omit<AgentRunInput,'agent'|'query'>, recovery:string[]){
   let best:any=null;
   let bestCount=-1;
@@ -92,7 +96,7 @@ async function runWithRecovery(auth: Parameters<typeof runAgent>[0], agent: Excl
   for(let i=0;i<attempts.length;i++){
     try{
       const result=await runAgent(auth,{agent,query:attempts[i],...options});
-      const body=result.body;
+      const body=resultBody(result);
       const count=agent==='lead-finder'?usableLeadResult(body).length:recordsOf(body).length;
       if(count>bestCount){best=body;bestCount=count;}
       if(count>0) break;
