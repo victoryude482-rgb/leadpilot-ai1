@@ -6,16 +6,30 @@ export interface SearchResult {
   warnings: string[];
 }
 
-const PROVIDER_TIMEOUT_MS = 5000;
+const DEFAULT_TIMEOUT_MS = 7000;
+const SLOW_PROVIDER_TIMEOUT_MS = 12000;
+
+function providerTimeoutMs(provider: LeadProvider) {
+  const name = provider.constructor.name.toLowerCase();
+  if (name.includes('openstreetmap') || name.includes('photon') || name.includes('agentdiscovery')) return SLOW_PROVIDER_TIMEOUT_MS;
+  if (name.includes('duckduckgo')) return 6500;
+  return DEFAULT_TIMEOUT_MS;
+}
 
 async function searchProviderFast(provider: LeadProvider, query: LeadSearchQuery): Promise<DiscoveredBusiness[]> {
-  return Promise.race([
-    provider.search(query),
-    new Promise<never>((_, reject) => {
-      const timer = setTimeout(() => reject(new Error('provider timed out')), PROVIDER_TIMEOUT_MS);
-      timer.unref?.();
-    }),
-  ]);
+  const timeoutMs = providerTimeoutMs(provider);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      provider.search(query),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`provider timed out after ${timeoutMs / 1000}s`)), timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function dedupe(records: DiscoveredBusiness[]): DiscoveredBusiness[] {
@@ -23,8 +37,8 @@ function dedupe(records: DiscoveredBusiness[]): DiscoveredBusiness[] {
   return records.filter((record) => {
     const websiteKey = record.website?.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
     const phoneKey = record.phone?.replace(/\D/g, '');
-    const nameKey = record.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const key = websiteKey || phoneKey || `${nameKey}|${(record.city ?? '').toLowerCase()}|${(record.country ?? '').toLowerCase()}`;
+    const nameKey = (record.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const key = websiteKey || phoneKey || (nameKey ? `${nameKey}|${(record.city ?? '').toLowerCase()}|${(record.country ?? '').toLowerCase()}` : '');
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -38,6 +52,16 @@ function rank(records: DiscoveredBusiness[]): DiscoveredBusiness[] {
       (record.address ? 1 : 0) + (record.city ? 1 : 0) + (record.country ? 1 : 0);
     return score(b) - score(a);
   });
+}
+
+function broadenQuery(query: LeadSearchQuery): LeadSearchQuery {
+  const original = query.keywords?.trim() || '';
+  const cleaned = original
+    .replace(/\b(find|show|give|tell me|look for|search for|what are|what is)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const keywords = [query.industry, cleaned, query.city, query.country].filter(Boolean).join(' ').trim();
+  return { ...query, keywords: keywords || 'business companies organizations' };
 }
 
 export async function searchLeads(providers: LeadProvider[], query: LeadSearchQuery): Promise<SearchResult> {
@@ -57,13 +81,20 @@ export async function searchLeads(providers: LeadProvider[], query: LeadSearchQu
 
   let records = await run(query);
 
-  // Retry once with a broader business query if a very specific phrase returned nothing.
+  // A natural-language request often contains instructions rather than searchable business terms.
+  // Retry with a cleaned, broader query so one overly-specific request does not produce a blank dashboard.
   if (records.length === 0) {
-    const broader = {
-      ...query,
-      keywords: [query.industry, query.keywords].filter(Boolean).join(' ').trim() || 'business',
-    };
+    const broader = broadenQuery(query);
     if (broader.keywords !== query.keywords) records = await run(broader);
+  }
+
+  // One final generic fallback keeps public search useful even when a provider rejects the first phrase.
+  if (records.length === 0) {
+    const fallback: LeadSearchQuery = {
+      ...query,
+      keywords: [query.industry, query.city, query.country, 'business companies'].filter(Boolean).join(' ').trim() || 'business companies',
+    };
+    if (fallback.keywords !== query.keywords) records = await run(fallback);
   }
 
   const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
