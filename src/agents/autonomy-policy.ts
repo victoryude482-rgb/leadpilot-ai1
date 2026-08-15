@@ -8,9 +8,9 @@ export type DecisionItem = {
 };
 
 /**
- * Defines what Victory AI can solve on its own and what must remain a human decision.
- * The goal is to let agents diagnose, research, code, test and recover automatically,
- * while keeping irreversible/external-account actions under user control.
+ * Victory AI operating model:
+ * agents solve implementation/research/diagnostic work themselves and only
+ * stop for product choices, credentials, or external/irreversible actions.
  */
 export function classifyAutonomy(command: string): {
   mode: 'autonomous-with-approval-gates';
@@ -21,16 +21,20 @@ export function classifyAutonomy(command: string): {
 } {
   const text = command.toLowerCase();
   const canDoNow = [
-    'Research the problem and inspect available evidence.',
-    'Break the request into tasks and assign the right agents.',
-    'Diagnose failures, retry providers, broaden searches and verify outputs.',
-    'Write or propose website/code changes and run available tests/checks.',
-    'Compare implementation options and explain trade-offs.',
-    'Prepare content, SEO, outreach, lead-scoring and Google Business Profile drafts.',
+    'Understand the request, split it into a plan and assign the right agents.',
+    'Research the problem, inspect source-backed evidence and diagnose failures.',
+    'Retry, broaden, reroute and combine configured providers when a source fails.',
+    'Write, refactor and test website/application code when the required repository access is available.',
+    'Fix ordinary bugs, improve performance, improve responsive UI and verify the result.',
+    'Design database/schema changes, API contracts and integration plans; execute non-destructive changes when authorized.',
+    'Build lead, trend, opportunity, scoring, SEO and outreach workflows.',
+    'Prepare Google Business Profile content, categories, descriptions, posts, audit findings and optimization recommendations.',
+    'Verify results, remove duplicates and reject unsupported or fabricated records.',
+    'Summarize what was attempted, what worked, what failed and the smallest decision needed from the user.',
   ];
 
   const needsApproval: string[] = [];
-  if (/deploy|production|publish|release|delete|migrate|payment|billing|send|post|edit.*profile|google business|gbp/.test(text)) {
+  if (/deploy|production|publish|release|delete|migrate|payment|billing|send|post|edit.*profile|google business|gbp|create.*listing|claim.*listing/.test(text)) {
     needsApproval.push('External, irreversible, publishing, account, payment or production actions require approval before execution.');
   }
   if (/credential|api key|password|secret|token/.test(text)) {
@@ -42,16 +46,20 @@ export function classifyAutonomy(command: string): {
     canDoNow,
     needsApproval,
     userTechnicalDecisions: [
-      'Choose product behavior and priorities when there are legitimate alternatives.',
-      'Approve production deployments or destructive changes.',
-      'Approve external-account changes such as Google Business Profile updates.',
-      'Provide or connect paid/provider credentials when a real data source requires them.',
+      'Choose product behavior, architecture and priorities when multiple valid technical options exist.',
+      'Choose whether to add, remove or replace a provider/integration.',
+      'Approve production deployments, destructive changes and data migrations.',
+      'Approve external-account actions such as publishing or changing a Google Business Profile.',
+      'Provide or connect provider credentials when a real data source requires them.',
+      'Choose business rules that cannot be safely inferred, such as target market, offer, budget or outreach limits.',
     ],
     safetyRules: [
       'Never fabricate leads, websites, contacts, reviews, business facts or evidence.',
-      'Keep verified facts separate from AI predictions and recommendations.',
-      'Do not send outreach or publish externally without an explicit approval gate.',
+      'Keep verified facts separate from AI predictions, scores and recommendations.',
+      'Do not send outreach, publish externally or change an external account without an explicit approval gate.',
       'When a provider fails, recover with another configured source instead of manufacturing data.',
+      'If a task is ambiguous but reversible, choose the safest reasonable implementation and report the assumption.',
+      'If a task is irreversible, financially consequential, security-sensitive or externally published, stop and ask for approval.',
     ],
   };
 }
