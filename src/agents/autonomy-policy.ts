@@ -9,8 +9,9 @@ export type DecisionItem = {
 
 /**
  * Victory AI operating model:
- * agents solve implementation/research/diagnostic work themselves and only
- * stop for product choices, credentials, or external/irreversible actions.
+ * agents own ordinary research, diagnosis, implementation planning and safe
+ * recovery. The human remains the technical decision maker for architecture,
+ * credentials, external accounts and irreversible production actions.
  */
 export function classifyAutonomy(command: string): {
   mode: 'autonomous-with-approval-gates';
@@ -18,8 +19,41 @@ export function classifyAutonomy(command: string): {
   needsApproval: string[];
   userTechnicalDecisions: string[];
   safetyRules: string[];
+  decisionQueue: DecisionItem[];
 } {
   const text = command.toLowerCase();
+  const decisionQueue: DecisionItem[] = [];
+  const addDecision = (item: DecisionItem) => {
+    if (!decisionQueue.some((x) => x.area === item.area)) decisionQueue.push(item);
+  };
+
+  if (/code|coding|website|web app|frontend|backend|bug|fix|refactor|api|database|schema/.test(text)) {
+    addDecision({
+      area: 'code-and-website',
+      level: 'user-only',
+      reason: 'Victory AI can investigate, design, implement and test ordinary code changes, but you choose the technical direction when multiple valid architectures exist.',
+      examples: ['Choose architecture', 'Approve major code changes', 'Approve production deployment'],
+    });
+  }
+
+  if (/google business|gbp|business profile|google maps profile/.test(text)) {
+    addDecision({
+      area: 'google-business-profile',
+      level: 'approval-required',
+      reason: 'Victory AI can audit and prepare GBP work, but Google account access and publishing changes require your authorization.',
+      examples: ['Connect GBP', 'Choose the profile/location', 'Approve publishing changes'],
+    });
+  }
+
+  if (/api key|apikey|credential|password|secret|token/.test(text)) {
+    addDecision({
+      area: 'credentials',
+      level: 'user-only',
+      reason: 'Credentials must be supplied or connected securely by you.',
+      examples: ['Connect a provider', 'Add an API key in deployment settings'],
+    });
+  }
+
   const canDoNow = [
     'Understand the request, split it into a plan and assign the right agents.',
     'Research the problem, inspect source-backed evidence and diagnose failures.',
@@ -61,5 +95,6 @@ export function classifyAutonomy(command: string): {
       'If a task is ambiguous but reversible, choose the safest reasonable implementation and report the assumption.',
       'If a task is irreversible, financially consequential, security-sensitive or externally published, stop and ask for approval.',
     ],
+    decisionQueue,
   };
 }
