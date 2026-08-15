@@ -12,6 +12,7 @@ const isEvidenceAgent = (agent: AgentName): agent is EvidenceAgent => EVIDENCE_A
 export interface AgentRunInput { agent: AgentName; query: string; location?: string; industry?: string; country?: string; city?: string; limit?: number; }
 
 const searchableAgents = new Set<AgentName>(['lead-finder', ...EVIDENCE_AGENTS]);
+type LeadSearchBody = { results?: unknown[]; warnings?: string[]; [key: string]: unknown };
 
 async function runLeadFinderWithRecovery(
   auth: AuthContext | null,
@@ -28,9 +29,13 @@ async function runLeadFinderWithRecovery(
   const recoveryLog: string[] = [];
   let result = await handleLeadFinder(auth, current, providers);
 
-  for (let attempt = 0; attempt < 2 && result.body.results?.length === 0; attempt += 1) {
-    const warnings = result.body.warnings ?? [];
-    const decisions = planRecovery(current, warnings, result.body.results?.length ?? 0);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const body = result.body as LeadSearchBody;
+    const results = body.results ?? [];
+    if (results.length > 0) break;
+
+    const warnings = body.warnings ?? [];
+    const decisions = planRecovery(current, warnings, results.length);
     const next = decisions.find((decision) => decision.query && decision.action === 'broaden')
       ?? decisions.find((decision) => decision.query && decision.action === 'retry');
 
@@ -40,13 +45,14 @@ async function runLeadFinderWithRecovery(
     result = await handleLeadFinder(auth, current, providers);
   }
 
+  const body = result.body as LeadSearchBody;
   return {
     ...result,
     recovery: {
       autonomous: true,
       attempts: recoveryLog.length ? Math.min(recoveryLog.length, 3) : 1,
       actions: recoveryLog,
-      technicalDecisionNeeded: technicalDecisionNeeded(result.body.warnings ?? []),
+      technicalDecisionNeeded: technicalDecisionNeeded(body.warnings ?? []),
     },
   };
 }
