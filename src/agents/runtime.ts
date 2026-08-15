@@ -4,6 +4,7 @@ import { getAgent } from './registry';
 import { runEvidenceAgent } from './evidence-agent';
 import { planRecovery, technicalDecisionNeeded, type TechnicalDecision } from './self-healing';
 import type { AgentName } from '../../docs/agent-contract';
+import type { LeadSearchQuery } from '../providers/lead-provider';
 
 const EVIDENCE_AGENTS = ['trend-finder', 'opportunity-finder', 'tender-finder', 'ecommerce-opportunity'] as const;
 type EvidenceAgent = typeof EVIDENCE_AGENTS[number];
@@ -19,7 +20,7 @@ async function runLeadFinderWithRecovery(
   input: AgentRunInput,
   providers: ReturnType<typeof configuredLeadProviders>,
 ) {
-  let current = {
+  let current: LeadSearchQuery = {
     keywords: input.query,
     industry: input.industry,
     country: input.country,
