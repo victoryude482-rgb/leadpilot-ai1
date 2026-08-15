@@ -8,6 +8,7 @@ export interface SearchResult {
 
 const DEFAULT_TIMEOUT_MS = 7000;
 const SLOW_PROVIDER_TIMEOUT_MS = 12000;
+const STOP_WORDS = new Set(['find','show','give','tell','me','look','for','search','what','are','is','the','some','best','good','real','actual','business','businesses','company','companies','organization','organizations','near','in','and','with','please','leads','lead','customers','clients']);
 
 function providerTimeoutMs(provider: LeadProvider) {
   const name = provider.constructor.name.toLowerCase();
@@ -45,11 +46,40 @@ function dedupe(records: DiscoveredBusiness[]): DiscoveredBusiness[] {
   });
 }
 
-function rank(records: DiscoveredBusiness[]): DiscoveredBusiness[] {
+function tokens(value?: string): string[] {
+  return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(/\s+/).filter((t) => t.length >= 2 && !STOP_WORDS.has(t));
+}
+
+function relevant(record: DiscoveredBusiness, query: LeadSearchQuery): boolean {
+  const industry = tokens(query.industry);
+  const keywordTokens = tokens(query.keywords);
+  const wanted = [...new Set([...industry, ...keywordTokens])];
+  if (!wanted.length) return true;
+
+  const haystack = [record.name, record.industry, record.address, record.city, record.country].filter(Boolean).join(' ').toLowerCase();
+  const hits = wanted.filter((token) => haystack.includes(token));
+
+  // An explicit industry is a hard requirement. A plumber query must not return
+  // restaurants merely because they are nearby or have a website.
+  if (industry.length > 0 && !industry.some((token) => haystack.includes(token))) return false;
+
+  // For keyword-only searches require meaningful overlap rather than accepting
+  // arbitrary provider records. Location terms are handled by provider fields.
+  if (industry.length === 0 && keywordTokens.length > 0) {
+    const requiredHits = keywordTokens.length === 1 ? 1 : Math.max(1, Math.ceil(keywordTokens.length * 0.4));
+    if (hits.length < requiredHits) return false;
+  }
+  return true;
+}
+
+function rank(records: DiscoveredBusiness[], query?: LeadSearchQuery): DiscoveredBusiness[] {
   return [...records].sort((a, b) => {
-    const score = (record: DiscoveredBusiness) =>
-      (record.website ? 4 : 0) + (record.phone ? 3 : 0) + (record.email ? 3 : 0) +
-      (record.address ? 1 : 0) + (record.city ? 1 : 0) + (record.country ? 1 : 0);
+    const score = (record: DiscoveredBusiness) => {
+      const q = query ? tokens(query.industry).concat(tokens(query.keywords)) : [];
+      const haystack = [record.name, record.industry, record.address, record.city, record.country].filter(Boolean).join(' ').toLowerCase();
+      const relevance = q.filter((token) => haystack.includes(token)).length * 5;
+      return relevance + (record.website ? 4 : 0) + (record.phone ? 3 : 0) + (record.email ? 3 : 0) + (record.address ? 1 : 0) + (record.city ? 1 : 0) + (record.country ? 1 : 0);
+    };
     return score(b) - score(a);
   });
 }
@@ -80,23 +110,24 @@ export async function searchLeads(providers: LeadProvider[], query: LeadSearchQu
   };
 
   let records = await run(query);
+  const beforeRelevance = records.length;
+  records = records.filter((record) => relevant(record, query));
+  const removed = beforeRelevance - records.length;
+  if (removed > 0) warnings.push(`${removed} provider records were rejected because they did not match the requested business type or keywords.`);
 
-  // A natural-language request often contains instructions rather than searchable business terms.
-  // Retry with a cleaned, broader query so one overly-specific request does not produce a blank dashboard.
+  // Broaden only the wording, never the business-type requirement. This keeps
+  // recovery useful without turning unrelated businesses into leads.
   if (records.length === 0) {
     const broader = broadenQuery(query);
-    if (broader.keywords !== query.keywords) records = await run(broader);
+    const broaderRaw = await run(broader);
+    const broaderRelevant = broaderRaw.filter((record) => relevant(record, query));
+    records = broaderRelevant;
+    if (broaderRelevant.length === 0 && broaderRaw.length > 0) warnings.push('Providers returned businesses, but none matched the requested business type. No unrelated leads were substituted.');
   }
 
-  // One final generic fallback keeps public search useful even when a provider rejects the first phrase.
-  if (records.length === 0) {
-    const fallback: LeadSearchQuery = {
-      ...query,
-      keywords: [query.industry, query.city, query.country, 'business companies'].filter(Boolean).join(' ').trim() || 'business companies',
-    };
-    if (fallback.keywords !== query.keywords) records = await run(fallback);
-  }
-
+  // Do not use a generic fallback. Returning five correct leads is better than
+  // returning twenty unrelated businesses when the requested niche has only five
+  // verified matches available from the configured sources.
   const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
-  return { records: rank(dedupe(records)).slice(0, limit), providerCount: enabled.length, warnings };
+  return { records: rank(dedupe(records), query).slice(0, limit), providerCount: enabled.length, warnings };
 }
