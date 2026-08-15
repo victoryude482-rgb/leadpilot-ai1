@@ -15,137 +15,50 @@ export interface AgentRunInput { agent: AgentName; query: string; location?: str
 const searchableAgents = new Set<AgentName>(['lead-finder', ...EVIDENCE_AGENTS]);
 type LeadSearchBody = { results?: unknown[]; warnings?: string[]; [key: string]: unknown };
 
-async function runLeadFinderWithRecovery(
-  auth: AuthContext | null,
-  input: AgentRunInput,
-  providers: ReturnType<typeof configuredLeadProviders>,
-) {
-  let current: LeadSearchQuery = {
-    keywords: input.query,
-    industry: input.industry,
-    country: input.country,
-    city: input.city || input.location,
-    limit: input.limit,
-  };
+async function runLeadFinderWithRecovery(auth: AuthContext | null, input: AgentRunInput, providers: ReturnType<typeof configuredLeadProviders>) {
+  let current: LeadSearchQuery = { keywords: input.query || input.industry || 'business', industry: input.industry, country: input.country, city: input.city || input.location, limit: input.limit };
   const recoveryLog: string[] = [];
   const technicalDecisions: TechnicalDecision[] = [];
   let result = await handleLeadFinder(auth, current, providers);
-
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const body = result.body as LeadSearchBody;
     const results = body.results ?? [];
     if (results.length > 0) break;
-
     const warnings = body.warnings ?? [];
     const decisions = planRecovery(current, warnings, results.length);
-    for (const decision of decisions) {
-      recoveryLog.push(decision.reason);
-      if (decision.technicalDecision) technicalDecisions.push(decision.technicalDecision);
-    }
-    const next = decisions.find((decision) => decision.query && decision.action === 'broaden')
-      ?? decisions.find((decision) => decision.query && decision.action === 'retry');
-
+    for (const decision of decisions) { recoveryLog.push(decision.reason); if (decision.technicalDecision) technicalDecisions.push(decision.technicalDecision); }
+    const next = decisions.find((decision) => decision.query && decision.action === 'broaden') ?? decisions.find((decision) => decision.query && decision.action === 'retry');
     if (!next?.query) break;
-    current = next.query;
+    current = { keywords: next.query.keywords || current.keywords || current.industry || 'business', industry: next.query.industry ?? current.industry, country: next.query.country ?? current.country, city: next.query.city ?? current.city, limit: next.query.limit ?? current.limit };
     result = await handleLeadFinder(auth, current, providers);
   }
-
   const body = result.body as LeadSearchBody;
-  return {
-    ...result,
-    recovery: {
-      autonomous: true,
-      attempts: recoveryLog.length ? Math.min(recoveryLog.length, 3) : 1,
-      actions: recoveryLog,
-      technicalDecisionNeeded: technicalDecisionNeeded(body.warnings ?? []),
-      technicalDecisions,
-    },
-  };
+  return { ...result, recovery: { autonomous: true, attempts: recoveryLog.length ? Math.min(recoveryLog.length, 3) : 1, actions: recoveryLog, technicalDecisionNeeded: technicalDecisionNeeded(body.warnings ?? []), technicalDecisions } };
 }
 
 async function runEvidenceWithRecovery(input: AgentRunInput) {
   let query = input.query;
   const recoveryLog: string[] = [];
   const technicalDecisions: TechnicalDecision[] = [];
-  let result = await runEvidenceAgent(input.agent as EvidenceAgent, query, {
-    industry: input.industry,
-    country: input.country,
-    city: input.city || input.location,
-    limit: input.limit,
-  });
-
+  let result = await runEvidenceAgent(input.agent as EvidenceAgent, query, { industry: input.industry, country: input.country, city: input.city || input.location, limit: input.limit });
   for (let attempt = 0; attempt < 2 && result.results.length === 0; attempt += 1) {
-    const decisions = planRecovery(
-      { keywords: query, industry: input.industry, country: input.country, city: input.city || input.location, limit: input.limit },
-      result.warnings,
-      result.results.length,
-    );
-    for (const decision of decisions) {
-      recoveryLog.push(decision.reason);
-      if (decision.technicalDecision) technicalDecisions.push(decision.technicalDecision);
-    }
-    const next = decisions.find((decision) => decision.query && decision.action === 'broaden')
-      ?? decisions.find((decision) => decision.query && decision.action === 'retry');
+    const decisions = planRecovery({ keywords: query, industry: input.industry, country: input.country, city: input.city || input.location, limit: input.limit }, result.warnings, result.results.length);
+    for (const decision of decisions) { recoveryLog.push(decision.reason); if (decision.technicalDecision) technicalDecisions.push(decision.technicalDecision); }
+    const next = decisions.find((decision) => decision.query && decision.action === 'broaden') ?? decisions.find((decision) => decision.query && decision.action === 'retry');
     if (!next?.query?.keywords) break;
     query = next.query.keywords;
-    result = await runEvidenceAgent(input.agent as EvidenceAgent, query, {
-      industry: input.industry,
-      country: input.country,
-      city: input.city || input.location,
-      limit: input.limit,
-    });
+    result = await runEvidenceAgent(input.agent as EvidenceAgent, query, { industry: input.industry, country: input.country, city: input.city || input.location, limit: input.limit });
   }
-
-  return {
-    ...result,
-    recovery: {
-      autonomous: true,
-      attempts: recoveryLog.length ? Math.min(recoveryLog.length, 3) : 1,
-      actions: recoveryLog,
-      technicalDecisionNeeded: technicalDecisionNeeded(result.warnings),
-      technicalDecisions,
-    },
-  };
+  return { ...result, recovery: { autonomous: true, attempts: recoveryLog.length ? Math.min(recoveryLog.length + 1, 3) : 1, actions: recoveryLog, technicalDecisionNeeded: technicalDecisionNeeded(result.warnings), technicalDecisions } };
 }
 
 export async function runAgent(auth: AuthContext | null, input: AgentRunInput) {
-  const definition = getAgent(input.agent);
-  if (!definition) return { status: 404, body: { error: 'Unknown agent.' } };
-  if (!input.query?.trim()) return { status: 400, body: { error: 'A search request is required.' } };
-
-  if (input.agent === 'lead-finder') {
-    const result = await runLeadFinderWithRecovery(auth, input, configuredLeadProviders());
-    return { status: result.status, body: { agent: definition, ...result.body, recovery: result.recovery } };
+  const agent = getAgent(input.agent);
+  if (!agent) return { status: 404, body: { error: `Unknown agent: ${input.agent}` } };
+  if (searchableAgents.has(input.agent)) {
+    const providers = configuredLeadProviders();
+    if (input.agent === 'lead-finder') return runLeadFinderWithRecovery(auth, input, providers);
+    return runEvidenceWithRecovery(input);
   }
-
-  if (isEvidenceAgent(input.agent)) {
-    const result = await runEvidenceWithRecovery(input);
-    return { status: 200, body: { ...result, agent: definition, status: 'evidence-search-complete' } };
-  }
-
-  if (!searchableAgents.has(input.agent)) {
-    return {
-      status: 200,
-      body: {
-        agent: definition,
-        status: 'ready-for-source-adapters',
-        query: input.query,
-        message: `${definition.name} is registered. The agent can reason and plan autonomously, but this capability needs its source/action adapter before it can execute external actions.`,
-        results: [],
-        recovery: {
-          autonomous: true,
-          technicalDecisionNeeded: true,
-          technicalDecisions: [{
-            type: 'integration',
-            title: `Activate ${definition.name}`,
-            reason: 'This agent needs a real source or action adapter before it can perform the external task.',
-            examples: ['Choose the provider/integration', 'Connect the required account', 'Approve the implementation approach'],
-          }],
-          actions: ['Technical activation is required for this agent; no fake result will be produced.'],
-        },
-      },
-    };
-  }
-
-  return { status: 200, body: { agent: definition, results: [] } };
+  return agent.run({ query: input.query, location: input.location, industry: input.industry, country: input.country, city: input.city, limit: input.limit });
 }
