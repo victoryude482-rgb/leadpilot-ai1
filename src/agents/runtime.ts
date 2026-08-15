@@ -58,7 +58,7 @@ export async function runAgent(auth: AuthContext | null, input: AgentRunInput) {
   if (searchableAgents.has(input.agent)) {
     const providers = configuredLeadProviders();
     if (input.agent === 'lead-finder') return runLeadFinderWithRecovery(auth, input, providers);
-    return runEvidenceWithRecovery(input);
+    if (isEvidenceAgent(input.agent)) return runEvidenceWithRecovery(input);
   }
-  return agent.run({ query: input.query, location: input.location, industry: input.industry, country: input.country, city: input.city, limit: input.limit });
+  return { status: 501, body: { error: `Agent ${input.agent} is registered but does not have an executable runtime yet.`, agent: input.agent, capabilities: agent.capabilities } };
 }
