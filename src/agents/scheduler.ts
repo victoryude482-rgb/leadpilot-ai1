@@ -40,7 +40,9 @@ export async function runDueAgentSchedules(limit = 10) {
       agent: schedule.agent_id as AgentName, query: schedule.query, location: schedule.location ?? undefined,
       industry: schedule.industry ?? undefined, limit: schedule.limit_count,
     });
-    const body = result.body as { results?: unknown[] };
+    const body = 'body' in result && result.body && typeof result.body === 'object'
+      ? result.body as { results?: unknown[] }
+      : { results: [] };
     const resultCount = Array.isArray(body.results) ? body.results.length : 0;
     const status = result.status >= 200 && result.status < 300 ? 'completed' : 'failed';
     await supabase.from('agent_schedules').update({
