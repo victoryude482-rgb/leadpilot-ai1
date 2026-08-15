@@ -28,8 +28,15 @@ function countryMatches(recordCountry: string|undefined, requestedCountry: strin
   const actualAliases = COUNTRY_ALIASES[actual] || [actual];
   return aliases.some((a) => actualAliases.includes(a) || actual.includes(a) || a.includes(actual));
 }
+function cityMatches(record: DiscoveredBusiness, requestedCity: string|undefined): boolean {
+  if (!requestedCity) return true;
+  const wanted=tokens(requestedCity); if(!wanted.length) return true;
+  const haystack=[record.city,record.address].filter(Boolean).join(' ').toLowerCase();
+  return wanted.every(t=>haystack.includes(t));
+}
 function relevant(record: DiscoveredBusiness, query: LeadSearchQuery): boolean {
   if (!countryMatches(record.country, query.country)) return false;
+  if (!cityMatches(record, query.city)) return false;
   const industry = tokens(query.industry); const keywordTokens = tokens(query.keywords); const wanted = [...new Set([...industry, ...keywordTokens])];
   if (!wanted.length) return true;
   const haystack = [record.name, record.industry, record.address].filter(Boolean).join(' ').toLowerCase(); const hit = (token: string) => variants(token).some((v) => haystack.includes(v));
@@ -43,8 +50,8 @@ export async function searchLeads(providers: LeadProvider[], query: LeadSearchQu
   const enabled = providers.filter(Boolean); const warnings: string[] = [];
   const run = async (q: LeadSearchQuery) => { const settled = await Promise.allSettled(enabled.map((provider) => searchProviderFast(provider, q))); return settled.flatMap((result, index) => { if (result.status === 'fulfilled') return result.value; const provider = enabled[index]; warnings.push(`${provider.constructor.name}: ${result.reason instanceof Error ? result.reason.message : 'search failed'}`); return []; }); };
   let records = await run(query); const before = records.length; records = records.filter((record) => relevant(record, query));
-  if (before > records.length) warnings.push(`${before - records.length} records rejected for wrong business type or country.`);
-  if (records.length === 0) { const broaderRaw = await run(broadenQuery(query)); records = broaderRaw.filter((record) => relevant(record, query)); if (broaderRaw.length && !records.length) warnings.push(`Providers returned records, but none matched the requested business type/country. No unrelated leads were substituted.`); }
+  if (before > records.length) warnings.push(`${before - records.length} records rejected for wrong business type, country, or city.`);
+  if (records.length === 0) { const broaderRaw = await run(broadenQuery(query)); records = broaderRaw.filter((record) => relevant(record, query)); if (broaderRaw.length && !records.length) warnings.push(`Providers returned records, but none matched the requested business type/country/city. No unrelated leads were substituted.`); }
   const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
   return { records: rank(dedupe(records), query).slice(0, limit), providerCount: enabled.length, warnings };
 }
