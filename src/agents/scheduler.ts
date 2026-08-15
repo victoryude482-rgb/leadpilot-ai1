@@ -34,17 +34,21 @@ export async function runDueAgentSchedules(limit = 10) {
   const now = new Date();
   const { data, error } = await supabase.from('agent_schedules').select('*').eq('active', true).lte('next_run_at', now.toISOString()).order('next_run_at', { ascending: true }).limit(limit);
   if (error) throw error;
-  const runs = [];
+  const runs: Array<{ id: string; status: 'completed' | 'failed'; resultCount: number }> = [];
+
   for (const schedule of data ?? []) {
     const result = await runAgent({ accountId: schedule.user_id }, {
       agent: schedule.agent_id as AgentName, query: schedule.query, location: schedule.location ?? undefined,
       industry: schedule.industry ?? undefined, limit: schedule.limit_count,
     });
+
     const body = 'body' in result && result.body && typeof result.body === 'object'
       ? result.body as { results?: unknown[] }
       : { results: [] };
     const resultCount = Array.isArray(body.results) ? body.results.length : 0;
-    const status = result.status >= 200 && result.status < 300 ? 'completed' : 'failed';
+    const responseStatus = 'status' in result && typeof result.status === 'number' ? result.status : 500;
+    const status: 'completed' | 'failed' = responseStatus >= 200 && responseStatus < 300 ? 'completed' : 'failed';
+
     await supabase.from('agent_schedules').update({
       next_run_at: nextRun(now, schedule.frequency as ScheduleFrequency).toISOString(),
       last_run_at: now.toISOString(), last_status: status, last_result_count: resultCount,
