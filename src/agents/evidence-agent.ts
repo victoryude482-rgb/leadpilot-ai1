@@ -22,15 +22,16 @@ export async function runEvidenceAgent(
   const sourceProviders = providers ?? configuredLeadProviders();
   const evidenceProviders = [
     ...sourceProviders,
+    // Reddit is useful when available, but it is deliberately optional because public Reddit search can return 403.
     new RedditTrendProvider(),
-    ...(agent === 'trend-finder' ? [new NewsTrendProvider()] : []),
+    new NewsTrendProvider(),
   ];
 
   const keywordsByAgent: Record<typeof agent, string> = {
-    'trend-finder': `emerging trend ${query} market demand news reddit`,
-    'opportunity-finder': `${query} business opportunity pain points demand reddit companies need`,
-    'tender-finder': `${query} tender procurement contract request for proposal reddit`,
-    'ecommerce-opportunity': `${query} product demand customer complaints buying intent reddit ecommerce`,
+    'trend-finder': `current emerging trends ${query} market demand news`,
+    'opportunity-finder': `${query} business opportunity customer demand pain points market gap companies`,
+    'tender-finder': `${query} public tender procurement contract request for proposal government bid`,
+    'ecommerce-opportunity': `${query} product demand customer buying intent ecommerce market opportunity`,
   };
 
   const search = await runLeadFinderPipeline('agent-research', evidenceProviders, {
@@ -44,13 +45,12 @@ export async function runEvidenceAgent(
     results: search.results,
     warnings: search.warnings,
     strategy: [
-      'Expanded the natural-language request into evidence-oriented search terms.',
-      'Queried configured discovery providers plus Reddit as a community-demand signal.',
-      agent === 'trend-finder'
-        ? 'Included public news as an additional trend signal.'
-        : 'Used Reddit to surface demand, pain points, and intent signals relevant to this agent.',
-      'Provider failures are isolated as warnings; available sources can still return results.',
-      'Returned only source-backed records; no synthetic opportunities were created.',
+      'Converted the natural-language request into broader evidence-oriented search terms.',
+      'Queried multiple discovery sources in parallel instead of depending on one provider.',
+      'Included public news as a second trend signal for every research agent.',
+      'Reddit is optional; a Reddit 403 is reported as a warning and does not block the search.',
+      'Provider failures are isolated so successful sources can still return readable results.',
+      'Returned only source-backed records; no synthetic businesses or opportunities were invented.',
     ],
   };
 }
