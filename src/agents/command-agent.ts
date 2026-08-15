@@ -29,6 +29,8 @@ export function planCommand(command: string): CommandPlan {
   const agents: Exclude<AgentName, 'command-agent'>[] = [];
   const add = (agent: Exclude<AgentName, 'command-agent'>) => { if (!agents.includes(agent)) agents.push(agent); };
   const has = (...patterns: RegExp[]) => patterns.some(pattern => pattern.test(text));
+  const technical = has(/code|coding|website|web app|frontend|backend|bug|debug|fix|refactor|api|database|schema|deploy|production/);
+  const gbp = has(/google business|gbp|business profile|google maps profile/);
   const trend = has(/trend|trending|what('s| is) hot|viral|popular|rising|growing/);
   const lead = has(/lead|prospect|customer|client|businesses|companies|buyers|who should i contact|potential customers/);
   const opportunity = has(/opportunit|demand|pain point|need|market gap|business idea|problem to solve|what can i sell|what should i sell/);
@@ -48,12 +50,19 @@ export function planCommand(command: string): CommandPlan {
   if (outreach) add('outreach');
   if (content) add('content');
   if (research && agents.length === 0) { add('trend-finder'); add('opportunity-finder'); }
-  if (agents.length === 0) add('lead-finder');
+
+  // Technical/GBP commands are decision workflows, not fake searches.
+  // Do not silently turn "fix my website" or "do GBP" into a lead search.
+  if (agents.length === 0 && !technical && !gbp) add('lead-finder');
 
   const recovery = recoveryQueries(query);
   const explanation = agents.length > 1
     ? `I understood this as a ${agents.length}-agent job. I will use ${agents.join(', ')}, verify source-backed records, and recover automatically if a source fails.`
-    : `I understood your request and routed it to ${agents[0]}. I will verify the returned records and automatically retry or broaden the search when a provider fails.`;
+    : agents.length === 1
+      ? `I understood your request and routed it to ${agents[0]}. I will verify records and recover automatically when a provider fails.`
+      : technical || gbp
+        ? 'I understood this as technical/account work. I will diagnose and prepare the work autonomously, then stop only for the technical or external-account decision you must make.'
+        : 'I understood your request as a decision workflow.';
   return { agents, query, explanation, recovery };
 }
 
@@ -116,6 +125,7 @@ export async function runCommand(auth: Parameters<typeof runAgent>[0], command: 
       approvalGates: true,
       syntheticData: false,
       verifiedBusinessOnly: plan.agents.includes('lead-finder'),
+      technicalDecisionQueue: autonomy.decisionQueue,
     },
   };
 }
