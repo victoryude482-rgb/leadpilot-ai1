@@ -20,5 +20,12 @@ export async function POST(request: Request) {
     limit: typeof body.limit === 'number' ? body.limit : 10,
   });
 
-  return NextResponse.json(result.body, { status: result.status });
+  // Lead-finder returns an HTTP-style { body, status } response, while
+  // evidence agents return their result object directly. Handle both shapes
+  // so the route stays type-safe and the browser receives readable results.
+  if ('body' in result && 'status' in result) {
+    return NextResponse.json(result.body, { status: result.status });
+  }
+
+  return NextResponse.json(result);
 }
