@@ -34,24 +34,30 @@ function cityMatches(record: DiscoveredBusiness, requestedCity: string|undefined
   const haystack=[record.city,record.address].filter(Boolean).join(' ').toLowerCase();
   return wanted.every(t=>haystack.includes(t));
 }
-function relevant(record: DiscoveredBusiness, query: LeadSearchQuery): boolean {
-  if (!countryMatches(record.country, query.country)) return false;
-  if (!cityMatches(record, query.city)) return false;
-  const industry = tokens(query.industry); const keywordTokens = tokens(query.keywords); const wanted = [...new Set([...industry, ...keywordTokens])];
-  if (!wanted.length) return true;
-  const haystack = [record.name, record.industry, record.address].filter(Boolean).join(' ').toLowerCase(); const hit = (token: string) => variants(token).some((v) => haystack.includes(v));
-  if (industry.length > 0 && !industry.some(hit)) return false;
-  if (industry.length === 0 && keywordTokens.length > 0 && !keywordTokens.some(hit)) return false;
-  return true;
+function locationMatches(record: DiscoveredBusiness, query: LeadSearchQuery): boolean {
+  return countryMatches(record.country, query.country) && cityMatches(record, query.city);
 }
-function rank(records: DiscoveredBusiness[], query?: LeadSearchQuery): DiscoveredBusiness[] { return [...records].sort((a, b) => { const q = query ? [...tokens(query.industry), ...tokens(query.keywords)] : []; const score = (record: DiscoveredBusiness) => { const haystack = [record.name, record.industry, record.address].filter(Boolean).join(' ').toLowerCase(); const relevance = q.reduce((n, token) => n + (variants(token).some((v) => haystack.includes(v)) ? 5 : 0), 0); return relevance + (record.website ? 4 : 0) + (record.phone ? 3 : 0) + (record.email ? 3 : 0) + (record.address ? 1 : 0) + (record.city ? 1 : 0) + (record.country ? 1 : 0); }; return score(b) - score(a); }); }
+
+/** Business type/keyword matching is intentionally soft. A real business does not need to repeat the user's exact search words in its name or address. */
+function relevanceScore(record: DiscoveredBusiness, query: LeadSearchQuery): number {
+  const industry = tokens(query.industry);
+  const keywordTokens = tokens(query.keywords);
+  const wanted = [...new Set([...industry, ...keywordTokens])];
+  if (!wanted.length) return 0;
+  const haystack = [record.name, record.industry, record.address].filter(Boolean).join(' ').toLowerCase();
+  const hit = (token: string) => variants(token).some((v) => haystack.includes(v));
+  const matched = wanted.filter(hit).length;
+  const industryMatched = industry.filter(hit).length;
+  return matched * 10 + industryMatched * 8;
+}
+function rank(records: DiscoveredBusiness[], query?: LeadSearchQuery): DiscoveredBusiness[] { return [...records].sort((a, b) => { const score = (record: DiscoveredBusiness) => { const relevance = query ? relevanceScore(record, query) : 0; return relevance + (record.website ? 4 : 0) + (record.phone ? 3 : 0) + (record.email ? 3 : 0) + (record.address ? 1 : 0) + (record.city ? 1 : 0) + (record.country ? 1 : 0); }; return score(b) - score(a); }); }
 function broadenQuery(query: LeadSearchQuery): LeadSearchQuery { const cleaned = (query.keywords || '').replace(/\b(find|show|give|tell me|look for|search for|what are|what is|\d+)\b/gi, ' ').replace(/\s+/g, ' ').trim(); return { ...query, keywords: [query.industry, cleaned].filter(Boolean).join(' ').trim() || 'business' }; }
 export async function searchLeads(providers: LeadProvider[], query: LeadSearchQuery): Promise<SearchResult> {
   const enabled = providers.filter(Boolean); const warnings: string[] = [];
   const run = async (q: LeadSearchQuery) => { const settled = await Promise.allSettled(enabled.map((provider) => searchProviderFast(provider, q))); return settled.flatMap((result, index) => { if (result.status === 'fulfilled') return result.value; const provider = enabled[index]; warnings.push(`${provider.constructor.name}: ${result.reason instanceof Error ? result.reason.message : 'search failed'}`); return []; }); };
-  let records = await run(query); const before = records.length; records = records.filter((record) => relevant(record, query));
-  if (before > records.length) warnings.push(`${before - records.length} records rejected for wrong business type, country, or city.`);
-  if (records.length === 0) { const broaderRaw = await run(broadenQuery(query)); records = broaderRaw.filter((record) => relevant(record, query)); if (broaderRaw.length && !records.length) warnings.push(`Providers returned records, but none matched the requested business type/country/city. No unrelated leads were substituted.`); }
+  let records = await run(query); const before = records.length; records = records.filter((record) => locationMatches(record, query));
+  if (before > records.length) warnings.push(`${before - records.length} records rejected for wrong country or city.`);
+  if (records.length === 0) { const broaderRaw = await run(broadenQuery(query)); records = broaderRaw.filter((record) => locationMatches(record, query)); if (broaderRaw.length && !records.length) warnings.push(`Providers returned records, but none matched the requested country or city. No unrelated locations were substituted.`); }
   const limit = Math.min(Math.max(query.limit ?? 25, 1), 100);
   return { records: rank(dedupe(records), query).slice(0, limit), providerCount: enabled.length, warnings };
 }
