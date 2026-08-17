@@ -7,51 +7,13 @@ import { researchWeb, type ResearchSource, type ResearchInsight } from '../resea
 
 export interface TrendSignal { title: string; source: 'reddit' | 'google-news-rss'; url?: string; community?: string; relevance: number; }
 export interface TrendLeadResult { trends: TrendSignal[]; results: FinderPipelineResult[]; warnings: string[]; strategy: string[]; research?: { answer: string; sources: ResearchSource[]; queries: string[]; insights: ResearchInsight[]; followUpQueries: string[] }; }
-
 const STOP_WORDS = new Set(['about','after','again','also','been','being','business','businesses','could','from','have','into','more','most','over','people','that','their','there','these','they','this','those','through','today','trend','trends','what','when','where','which','while','with','would','your','news','market','markets','company','companies','automation','opportunities','opportunity','research','latest']);
 function words(value: string): string[] { return value.toLowerCase().replace(/[^a-z0-9]+/g,' ').split(/\s+/).filter(w=>w.length>=4&&!STOP_WORDS.has(w)&&!/^\d+$/.test(w)); }
 export function extractTrendSignals(records: DiscoveredBusiness[], limit=10): TrendSignal[] {
   const frequency=new Map<string,number>();
   const normalized=records.map(record=>{const title=record.name.trim();const tokens=[...new Set(words(title))];for(const token of tokens)frequency.set(token,(frequency.get(token)??0)+1);return{record,title,tokens};});
-  return normalized.map(({record,title,tokens})=>{const repeated=tokens.reduce((sum,t)=>sum+Math.min(frequency.get(t)??1,3),0);const sourceBoost=record.source==='reddit'?2:1;return{title,source:record.source==='reddit'?'reddit':'google-news-rss',url:record.website,community:record.source==='reddit'?record.address:undefined,relevance:Math.min(100,20+repeated*6+sourceBoost*5)};}).sort((a,b)=>b.relevance-a.relevance).slice(0,Math.max(1,limit));
+  return normalized.map(({record,title,tokens}): TrendSignal=>{const repeated=tokens.reduce((sum,t)=>sum+Math.min(frequency.get(t)??1,3),0);const source: TrendSignal['source']=record.source==='reddit'?'reddit':'google-news-rss';const sourceBoost=source==='reddit'?2:1;return{title,source,url:record.website,community:source==='reddit'?record.address:undefined,relevance:Math.min(100,20+repeated*6+sourceBoost*5)};}).sort((a,b)=>b.relevance-a.relevance).slice(0,Math.max(1,limit));
 }
-function trendKeywords(trends:TrendSignal[], original:LeadSearchQuery, researchSources:ResearchSource[]=[]):string {
-  const counts=new Map<string,number>();
-  for(const trend of trends)for(const token of words(trend.title))counts.set(token,(counts.get(token)??0)+1);
-  for(const source of researchSources)for(const token of words(`${source.title} ${source.snippet??''}`))counts.set(token,(counts.get(token)??0)+1);
-  const repeated=[...counts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([token])=>token);
-  return [...new Set([original.industry,original.keywords,...repeated].filter(Boolean))].join(' ').trim();
-}
-function researchQuestionFor(query:LeadSearchQuery):string {
-  const subject=[query.industry,query.keywords,query.city,query.country].filter(Boolean).join(' ');
-  return `Research ${subject||'business opportunities'}: identify current demand, recurring customer problems, automation opportunities, buying signals, risks, competitors, and the types of businesses most likely to need solutions. Compare recent web, news, and community evidence and prioritize independent sources.`;
-}
-
-export async function findLeadsFromTrends(accountId:string, query:LeadSearchQuery, providers:LeadProvider[]=configuredLeadProviders()):Promise<TrendLeadResult>{
-  const warnings:string[]=[];
-  let research:TrendLeadResult['research'];
-  try {
-    const intelligence=await researchWeb(researchQuestionFor(query));
-    research={answer:intelligence.answer,sources:intelligence.sources,queries:intelligence.queries,insights:intelligence.insights,followUpQueries:intelligence.followUpQueries};
-    warnings.push(...intelligence.warnings);
-  } catch(error){ warnings.push(`Research intelligence unavailable: ${error instanceof Error?error.message:String(error)}`); }
-
-  const trendProviders=[new RedditTrendProvider(),new NewsTrendProvider()];
-  const settled=await Promise.allSettled(trendProviders.map(provider=>provider.search(query)));
-  const trendRecords:DiscoveredBusiness[]=[];
-  settled.forEach((result,index)=>{if(result.status==='fulfilled')trendRecords.push(...result.value);else warnings.push(`${trendProviders[index].constructor.name}: ${result.reason instanceof Error?result.reason.message:String(result.reason)}`);});
-  const trends=extractTrendSignals(trendRecords,Math.min(Math.max(query.limit??10,1),20));
-  if(!trends.length)warnings.push('No public Reddit/news trend signals were available; business discovery was not replaced with synthetic trends.');
-
-  const leadQuery:LeadSearchQuery={...query,keywords:trendKeywords(trends,query,research?.sources)||query.keywords||query.industry||'business',limit:Math.min(Math.max(query.limit??25,1),100)};
-  const discovered=await runLeadFinderPipeline(accountId,providers,leadQuery);
-  warnings.push(...discovered.warnings);
-  return {trends,results:discovered.results,warnings:[...new Set(warnings)],strategy:[
-    'Researches the opportunity before lead discovery using web, news, and community evidence.',
-    'Runs Reddit and public Google News RSS trend discovery in parallel.',
-    'Extracts repeated demand, problem, competition, and opportunity terms from the evidence.',
-    'Uses evidence-derived terms to drive real-business discovery instead of guessing lead keywords.',
-    'Verifies and transparently scores each discovered business after search.',
-    'Keeps trend posts as research signals only; they are never persisted as business leads.',
-  ],research};
-}
+function trendKeywords(trends:TrendSignal[], original:LeadSearchQuery, researchSources:ResearchSource[]=[]):string {const counts=new Map<string,number>();for(const trend of trends)for(const token of words(trend.title))counts.set(token,(counts.get(token)??0)+1);for(const source of researchSources)for(const token of words(`${source.title} ${source.snippet??''}`))counts.set(token,(counts.get(token)??0)+1);const repeated=[...counts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([token])=>token);return [...new Set([original.industry,original.keywords,...repeated].filter(Boolean))].join(' ').trim();}
+function researchQuestionFor(query:LeadSearchQuery):string {const subject=[query.industry,query.keywords,query.city,query.country].filter(Boolean).join(' ');return `Research ${subject||'business opportunities'}: identify current demand, recurring customer problems, automation opportunities, buying signals, risks, competitors, and the types of businesses most likely to need solutions. Compare recent web, news, and community evidence and prioritize independent sources.`;}
+export async function findLeadsFromTrends(accountId:string, query:LeadSearchQuery, providers:LeadProvider[]=configuredLeadProviders()):Promise<TrendLeadResult>{const warnings:string[]=[];let research:TrendLeadResult['research'];try{const intelligence=await researchWeb(researchQuestionFor(query));research={answer:intelligence.answer,sources:intelligence.sources,queries:intelligence.queries,insights:intelligence.insights,followUpQueries:intelligence.followUpQueries};warnings.push(...intelligence.warnings);}catch(error){warnings.push(`Research intelligence unavailable: ${error instanceof Error?error.message:String(error)}`);}const trendProviders=[new RedditTrendProvider(),new NewsTrendProvider()];const settled=await Promise.allSettled(trendProviders.map(provider=>provider.search(query)));const trendRecords:DiscoveredBusiness[]=[];settled.forEach((result,index)=>{if(result.status==='fulfilled')trendRecords.push(...result.value);else warnings.push(`${trendProviders[index].constructor.name}: ${result.reason instanceof Error?result.reason.message:String(result.reason)}`);});const trends=extractTrendSignals(trendRecords,Math.min(Math.max(query.limit??10,1),20));if(!trends.length)warnings.push('No public Reddit/news trend signals were available; business discovery was not replaced with synthetic trends.');const leadQuery:LeadSearchQuery={...query,keywords:trendKeywords(trends,query,research?.sources)||query.keywords||query.industry||'business',limit:Math.min(Math.max(query.limit??25,1),100)};const discovered=await runLeadFinderPipeline(accountId,providers,leadQuery);warnings.push(...discovered.warnings);return{trends,results:discovered.results,warnings:[...new Set(warnings)],strategy:['Researches the opportunity before lead discovery using web, news, and community evidence.','Runs Reddit and public Google News RSS trend discovery in parallel.','Extracts repeated demand, problem, competition, and opportunity terms from the evidence.','Uses evidence-derived terms to drive real-business discovery instead of guessing lead keywords.','Verifies and transparently scores each discovered business after search.','Keeps trend posts as research signals only; they are never persisted as business leads.'],research};}
