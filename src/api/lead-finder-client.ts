@@ -6,8 +6,8 @@ export interface LeadFinderFilters {
   limit?: number;
 }
 
-export async function searchLeadFinder(filters: LeadFinderFilters) {
-  const response = await fetch('/api/leads/search', {
+async function postSearch(path: string, filters: LeadFinderFilters) {
+  const response = await fetch(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     credentials: 'include',
@@ -22,4 +22,12 @@ export async function searchLeadFinder(filters: LeadFinderFilters) {
     throw new Error(message);
   }
   return body;
+}
+
+export function searchLeadFinder(filters: LeadFinderFilters) {
+  return postSearch('/api/leads/search', filters);
+}
+
+export function searchTrendLeads(filters: LeadFinderFilters) {
+  return postSearch('/api/leads/trend-search', filters);
 }
