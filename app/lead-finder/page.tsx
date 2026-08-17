@@ -15,7 +15,7 @@ type SearchResult = { results?: Lead[]; count?: number; warnings?: string[]; err
 
 export default function LeadFinderPage() {
   const [filters, setFilters] = useState({ industry: '', country: '', city: '', keywords: '', limit: 25 });
-  const [trendMode, setTrendMode] = useState(false);
+  const [trendMode, setTrendMode] = useState(true);
   const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [result, setResult] = useState<SearchResult>({});
 
@@ -35,17 +35,32 @@ export default function LeadFinderPage() {
   return (
     <main style={{ maxWidth: 960, margin: '0 auto', padding: 32, fontFamily: 'system-ui' }}>
       <h1>Lead Finder</h1>
-      <p>Search prospects directly, or let current Reddit/news signals guide the niche before finding real businesses.</p>
+      <p>Describe the niche you want. LeadPilot checks public trend signals first, then searches real businesses through multiple discovery sources.</p>
+
       <form onSubmit={submit} style={{ display: 'grid', gap: 12, marginTop: 24 }}>
         {(['industry', 'country', 'city', 'keywords'] as const).map((key) => (
-          <input key={key} value={filters[key]} placeholder={key} onChange={(e) => setFilters({ ...filters, [key]: e.target.value })} />
+          <input
+            key={key}
+            value={filters[key]}
+            placeholder={key === 'keywords' ? 'Try: AI automation for restaurants' : key}
+            onChange={(e) => setFilters({ ...filters, [key]: e.target.value })}
+          />
         ))}
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={trendMode} onChange={(e) => setTrendMode(e.target.checked)} />
-          Trend-first search (Reddit + News → business discovery)
+          Trend-first search (Reddit + News → real-business discovery)
         </label>
-        <button disabled={state === 'loading'} type="submit">{state === 'loading' ? 'Finding leads…' : trendMode ? 'Find trending opportunities' : 'Find leads'}</button>
+        <button disabled={state === 'loading'} type="submit">
+          {state === 'loading' ? 'Finding leads…' : trendMode ? 'Find trending opportunities' : 'Find leads'}
+        </button>
       </form>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16, fontSize: 12 }}>
+        <LeadQualityBadge score={85} />
+        <LeadQualityBadge score={55} />
+        <LeadQualityBadge score={25} />
+        <span style={{ opacity: 0.7, alignSelf: 'center' }}>Green = good · Yellow = medium · Red = bad</span>
+      </div>
 
       {result.error && <p role="alert">{result.error}</p>}
       {state === 'done' && <p>{result.count ?? result.results?.length ?? 0} leads found.</p>}
