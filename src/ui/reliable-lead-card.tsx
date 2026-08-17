@@ -1,5 +1,6 @@
 import type { ReliableLeadReport } from '../leads/reliable-report';
 import type { LeadRecord } from '../leads/model';
+import LeadQualityBadge from '../../components/lead-quality-badge';
 
 export function ReliableLeadCard({ lead, report }: { lead: LeadRecord; report: ReliableLeadReport }) {
   return (
@@ -8,6 +9,10 @@ export function ReliableLeadCard({ lead, report }: { lead: LeadRecord; report: R
         <div>
           <p className="text-sm text-slate-400">Lead</p>
           <h2 className="text-lg font-semibold">{lead.businessId}</h2>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <LeadQualityBadge score={lead.score} />
+            <span className="text-xs text-slate-400">Lead score: {lead.score}/100 · {lead.scoreLabel}</span>
+          </div>
         </div>
         <div className="rounded-xl border border-slate-700 px-3 py-2 text-right">
           <p className="text-xs text-slate-400">Reliability</p>
