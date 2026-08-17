@@ -1,10 +1,12 @@
 import type { LeadRecord } from '../leads/model';
 import type { ReliableLeadReport } from '../leads/reliable-report';
+import type { LeadResearch } from '../agents/lead-research-agent';
 import { ReliableLeadCard } from './reliable-lead-card';
 
 export interface LeadFinderResult {
   lead: LeadRecord;
   report: ReliableLeadReport;
+  research?: LeadResearch;
 }
 
 export function LeadFinderResults({ results }: { results: LeadFinderResult[] }) {
@@ -18,8 +20,8 @@ export function LeadFinderResults({ results }: { results: LeadFinderResult[] }) 
         <h2 className="text-xl font-semibold text-white">Prospects worth reviewing</h2>
         <span className="text-sm text-slate-400">{results.length} results</span>
       </div>
-      {results.map(({ lead, report }) => (
-        <ReliableLeadCard key={lead.id} lead={lead} report={report} />
+      {results.map(({ lead, report, research }) => (
+        <ReliableLeadCard key={lead.id} lead={lead} report={report} research={research} />
       ))}
     </section>
   );
