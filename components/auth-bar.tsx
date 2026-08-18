@@ -6,6 +6,12 @@ import { getSupabaseBrowserClient } from '@/src/auth/supabase-browser';
 type Props = { onTokenChange: (token: string) => void };
 type Mode = 'signin' | 'signup';
 
+type SessionLike = { access_token: string } | null | undefined;
+
+function accessToken(session: SessionLike): string {
+  return session?.access_token || '';
+}
+
 export default function AuthBar({ onTokenChange }: Props) {
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
@@ -25,13 +31,13 @@ export default function AuthBar({ onTokenChange }: Props) {
       if (!active) return;
       const session = data.session;
       setUserEmail(session?.user.email || '');
-      onTokenChange(session?.access_token || '');
+      onTokenChange(accessToken(session));
       if (session) window.location.replace('/workspace');
     });
     const { data } = client.auth.onAuthStateChange((_event, session) => {
       if (!active) return;
       setUserEmail(session?.user.email || '');
-      onTokenChange(session?.access_token || '');
+      onTokenChange(accessToken(session));
       if (session) window.location.replace('/workspace');
     });
     return () => { active = false; data.subscription.unsubscribe(); };
@@ -45,7 +51,6 @@ export default function AuthBar({ onTokenChange }: Props) {
     }
     setBusy(true); setMessage(''); setNoticeType('info');
 
-    // OTP is preferred because it works directly with the 6-digit code UI.
     const { data, error } = await client.auth.signInWithOtp({
       email: email.trim(),
       options: {
@@ -55,8 +60,9 @@ export default function AuthBar({ onTokenChange }: Props) {
     });
 
     if (!error) {
-      if (data.session) {
-        onTokenChange(data.session.access_token);
+      const session = data.session as SessionLike;
+      if (session) {
+        onTokenChange(accessToken(session));
         window.location.replace('/workspace');
         return;
       }
@@ -66,8 +72,6 @@ export default function AuthBar({ onTokenChange }: Props) {
       return;
     }
 
-    // Fallback for projects where the OTP endpoint/template is unavailable.
-    // This still creates the account and asks Supabase to send its confirmation email.
     const { data: signupData, error: signupError } = await client.auth.signUp({
       email: email.trim(),
       password,
@@ -81,8 +85,9 @@ export default function AuthBar({ onTokenChange }: Props) {
       return;
     }
 
-    if (signupData.session) {
-      onTokenChange(signupData.session.access_token);
+    const signupSession = signupData.session as SessionLike;
+    if (signupSession) {
+      onTokenChange(accessToken(signupSession));
       window.location.replace('/workspace');
       return;
     }
@@ -100,7 +105,7 @@ export default function AuthBar({ onTokenChange }: Props) {
       return;
     }
     setBusy(true); setMessage(''); setNoticeType('info');
-    const { data, error } = await client.auth.verifyOtp({
+    const { error } = await client.auth.verifyOtp({
       email: email.trim(),
       token: code.trim(),
       type: 'email',
@@ -111,6 +116,7 @@ export default function AuthBar({ onTokenChange }: Props) {
       setBusy(false);
       return;
     }
+
     if (password) {
       const { error: passwordError } = await client.auth.updateUser({ password });
       if (passwordError) {
@@ -120,8 +126,11 @@ export default function AuthBar({ onTokenChange }: Props) {
         return;
       }
     }
-    if (data.session) {
-      onTokenChange(data.session.access_token);
+
+    const { data: sessionData } = await client.auth.getSession();
+    const session = sessionData.session;
+    if (session) {
+      onTokenChange(accessToken(session));
       window.location.replace('/workspace');
     } else {
       setNoticeType('error');
@@ -152,7 +161,7 @@ export default function AuthBar({ onTokenChange }: Props) {
       setNoticeType('error');
       setMessage(`Sign in failed: ${error.message}`);
     } else if (data.session) {
-      onTokenChange(data.session.access_token);
+      onTokenChange(accessToken(data.session));
       window.location.replace('/workspace');
       return;
     }
