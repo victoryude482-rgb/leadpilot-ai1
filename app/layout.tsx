@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import CommandDashboard from '@/src/components/command-dashboard';
 
 export const metadata: Metadata = {
   title: 'Victory AI',
@@ -10,7 +9,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body><CommandDashboard />{children}</body>
+      <body>{children}</body>
     </html>
   );
 }
