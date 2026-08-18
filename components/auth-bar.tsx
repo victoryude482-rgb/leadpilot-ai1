@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { getSupabaseBrowserClient } from '@/src/auth/supabase-browser';
 
 type Props = { onTokenChange: (token: string) => void };
@@ -20,25 +20,40 @@ export default function AuthBar({ onTokenChange }: Props) {
   const [busy, setBusy] = useState(false);
   const [noticeType, setNoticeType] = useState<'info' | 'error'>('info');
   const client = getSupabaseBrowserClient();
+  const tokenChangeRef = useRef(onTokenChange);
+
+  // Keep the latest callback without making the Supabase subscription restart
+  // every time the parent renders. This prevents a visible auth/UI refresh loop.
+  useEffect(() => {
+    tokenChangeRef.current = onTokenChange;
+  }, [onTokenChange]);
 
   useEffect(() => {
     if (!client) return;
     let active = true;
-    client.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      const session = data.session;
-      setUserEmail(session?.user.email || '');
-      onTokenChange(accessToken(session));
-      if (session) window.location.replace('/workspace');
-    });
-    const { data } = client.auth.onAuthStateChange((_event, session) => {
+    let redirecting = false;
+
+    const applySession = (session: SessionLike) => {
       if (!active) return;
       setUserEmail(session?.user.email || '');
-      onTokenChange(accessToken(session));
-      if (session) window.location.replace('/workspace');
-    });
-    return () => { active = false; data.subscription.unsubscribe(); };
-  }, [client, onTokenChange]);
+      tokenChangeRef.current(accessToken(session));
+      if (session && !redirecting && window.location.pathname !== '/workspace') {
+        redirecting = true;
+        window.location.replace('/workspace');
+      }
+    };
+
+    client.auth.getSession().then(({ data }) => applySession(data.session));
+    const { data } = client.auth.onAuthStateChange((_event, session) => applySession(session));
+
+    return () => {
+      active = false;
+      data.subscription.unsubscribe();
+    };
+    // The Supabase browser client is intentionally subscribed once per mount.
+    // Callback changes are handled through tokenChangeRef above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client]);
 
   async function signUp() {
     if (!client || !email.trim() || !password) {
@@ -54,10 +69,7 @@ export default function AuthBar({ onTokenChange }: Props) {
 
     setBusy(true); setMessage(''); setNoticeType('info');
 
-    const { data, error } = await client.auth.signUp({
-      email: email.trim(),
-      password,
-    });
+    const { data, error } = await client.auth.signUp({ email: email.trim(), password });
 
     if (error) {
       setNoticeType('error');
@@ -66,10 +78,8 @@ export default function AuthBar({ onTokenChange }: Props) {
       return;
     }
 
-    // With Supabase Confirm Email disabled, signUp returns a session immediately.
-    // This keeps the app independent of confirmation/magic-link email delivery.
     if (data.session) {
-      onTokenChange(accessToken(data.session));
+      tokenChangeRef.current(accessToken(data.session));
       window.location.replace('/workspace');
       return;
     }
@@ -87,10 +97,7 @@ export default function AuthBar({ onTokenChange }: Props) {
     }
 
     setBusy(true); setMessage(''); setNoticeType('info');
-    const { data, error } = await client.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    const { data, error } = await client.auth.signInWithPassword({ email: email.trim(), password });
 
     if (error) {
       setNoticeType('error');
@@ -100,7 +107,7 @@ export default function AuthBar({ onTokenChange }: Props) {
     }
 
     if (data.session) {
-      onTokenChange(accessToken(data.session));
+      tokenChangeRef.current(accessToken(data.session));
       window.location.replace('/workspace');
       return;
     }
