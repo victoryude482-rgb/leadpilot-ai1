@@ -1,13 +1,13 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { getSupabaseBrowserClient } from '@/src/auth/supabase-browser';
 
 type Props = { onTokenChange: (token: string) => void };
 type Mode = 'signin' | 'signup';
-type SessionLike = { access_token: string } | null | undefined;
 
-function accessToken(session: SessionLike): string {
+function accessToken(session: Session | null | undefined): string {
   return session?.access_token || '';
 }
 
@@ -22,8 +22,6 @@ export default function AuthBar({ onTokenChange }: Props) {
   const client = getSupabaseBrowserClient();
   const tokenChangeRef = useRef(onTokenChange);
 
-  // Keep the latest callback without making the Supabase subscription restart
-  // every time the parent renders. This prevents a visible auth/UI refresh loop.
   useEffect(() => {
     tokenChangeRef.current = onTokenChange;
   }, [onTokenChange]);
@@ -33,7 +31,7 @@ export default function AuthBar({ onTokenChange }: Props) {
     let active = true;
     let redirecting = false;
 
-    const applySession = (session: SessionLike) => {
+    const applySession = (session: Session | null) => {
       if (!active) return;
       setUserEmail(session?.user.email || '');
       tokenChangeRef.current(accessToken(session));
@@ -50,9 +48,6 @@ export default function AuthBar({ onTokenChange }: Props) {
       active = false;
       data.subscription.unsubscribe();
     };
-    // The Supabase browser client is intentionally subscribed once per mount.
-    // Callback changes are handled through tokenChangeRef above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client]);
 
   async function signUp() {
@@ -66,61 +61,41 @@ export default function AuthBar({ onTokenChange }: Props) {
       setMessage('Password must be at least 6 characters.');
       return;
     }
-
     setBusy(true); setMessage(''); setNoticeType('info');
-
     const { data, error } = await client.auth.signUp({ email: email.trim(), password });
-
     if (error) {
-      setNoticeType('error');
-      setMessage(`Sign up failed: ${error.message}`);
-      setBusy(false);
-      return;
+      setNoticeType('error'); setMessage(`Sign up failed: ${error.message}`); setBusy(false); return;
     }
-
     if (data.session) {
       tokenChangeRef.current(accessToken(data.session));
       window.location.replace('/workspace');
       return;
     }
-
     setNoticeType('error');
-    setMessage('Account created, but Supabase is still requiring email confirmation. In Supabase Dashboard go to Authentication → Providers → Email and turn OFF "Confirm email", then sign in here.');
+    setMessage('Account created, but email confirmation is still enabled in Supabase. Turn off "Confirm email" or confirm the address before signing in.');
     setBusy(false);
   }
 
   async function signIn() {
     if (!client || !email.trim() || !password) {
-      setNoticeType('error');
-      setMessage('Enter your email and password.');
-      return;
+      setNoticeType('error'); setMessage('Enter your email and password.'); return;
     }
-
     setBusy(true); setMessage(''); setNoticeType('info');
     const { data, error } = await client.auth.signInWithPassword({ email: email.trim(), password });
-
     if (error) {
-      setNoticeType('error');
-      setMessage(`Sign in failed: ${error.message}`);
-      setBusy(false);
-      return;
+      setNoticeType('error'); setMessage(`Sign in failed: ${error.message}`); setBusy(false); return;
     }
-
     if (data.session) {
       tokenChangeRef.current(accessToken(data.session));
       window.location.replace('/workspace');
       return;
     }
-
-    setNoticeType('error');
-    setMessage('Sign in did not create a session. Check the Supabase Email provider settings.');
-    setBusy(false);
+    setNoticeType('error'); setMessage('Sign in did not create a session. Check the Supabase Email provider settings.'); setBusy(false);
   }
 
   async function submitAuth(event: FormEvent) {
     event.preventDefault();
-    if (mode === 'signup') await signUp();
-    else await signIn();
+    if (mode === 'signup') await signUp(); else await signIn();
   }
 
   async function signOut() {
@@ -130,19 +105,14 @@ export default function AuthBar({ onTokenChange }: Props) {
   }
 
   function changeMode(next: Mode) {
-    setMode(next);
-    setMessage('');
-    setNoticeType('info');
+    setMode(next); setMessage(''); setNoticeType('info');
   }
 
   if (!client) return <span className="victory-auth-missing">AUTH NOT CONFIGURED</span>;
   if (userEmail) return <div className="victory-auth-signed"><a href="/workspace">Workspace</a><span title={userEmail}>{userEmail}</span><button type="button" onClick={signOut}>Sign out</button><style jsx>{styles}</style></div>;
 
   return <div className="victory-auth">
-    <div className="victory-auth-tabs">
-      <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => changeMode('signin')}>Sign in</button>
-      <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => changeMode('signup')}>Sign up</button>
-    </div>
+    <div className="victory-auth-tabs"><button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => changeMode('signin')}>Sign in</button><button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => changeMode('signup')}>Sign up</button></div>
     <form onSubmit={submitAuth} className="victory-auth-form">
       <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email address" autoComplete="email" required />
       <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder={mode === 'signup' ? 'Create password' : 'Password'} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={6} required />
