@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { runWebsiteBrand } from '../../../../src/agents/website-brand';
+import { runWebsiteBrand } from '../../../src/agents/website-brand';
 
 export async function GET(request: Request) {
   const query = new URL(request.url).searchParams.get('query')?.trim() || '';
