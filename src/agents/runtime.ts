@@ -5,6 +5,7 @@ import { runEvidenceAgent } from './evidence-agent';
 import { planRecovery, technicalDecisionNeeded, type TechnicalDecision } from './self-healing';
 import { runWorkPilot } from './workpilot';
 import { runWebsiteBrand } from './website-brand';
+import { requestAgentHelp } from './collaboration';
 import type { AgentName } from '../../docs/agent-contract';
 import type { LeadSearchQuery } from '../providers/lead-provider';
 
@@ -32,7 +33,15 @@ async function runEvidenceWithRecovery(input: AgentRunInput) {
 export async function runAgent(auth: AuthContext | null, input: AgentRunInput) {
   const agent = getAgent(input.agent);
   if (!agent) return { status: 404, body: { error: `Unknown agent: ${input.agent}` } };
-  if (input.agent === 'workpilot') return runWorkPilot(input);
+  if (input.agent === 'workpilot') {
+    const result = await runWorkPilot(input);
+    const needsHelp = result.results.length === 0 || result.results.every((item: { matchScore?: number }) => (item.matchScore ?? 0) < 55);
+    if (needsHelp) {
+      const help = await requestAgentHelp('workpilot', 'opportunity-finder', input);
+      return { ...result, collaboration: { ...(result as { collaboration?: object }).collaboration, handoffs: [help.handoff], specialistContext: help.result } };
+    }
+    return result;
+  }
   if (input.agent === 'website-brand') return runWebsiteBrand(input);
   if (searchableAgents.has(input.agent)) { const providers = configuredLeadProviders(); if (input.agent === 'lead-finder') return runLeadFinderWithRecovery(auth, input, providers); if (isEvidenceAgent(input.agent)) return runEvidenceWithRecovery(input); }
   return { status: 501, body: { error: `Agent ${input.agent} is registered but does not have an executable runtime yet.`, agent: input.agent, capabilities: agent.capabilities } };
