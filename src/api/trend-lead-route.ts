@@ -7,14 +7,16 @@ export interface TrendLeadHttpRequest {
   body?: unknown;
 }
 
-/** POST-only adapter for the trend-first lead discovery flow. */
+/** POST-only adapter for the trend-first lead discovery flow.
+ * Trend discovery can be used as public discovery; authenticated users still
+ * receive their normal account-scoped results through the downstream layer.
+ */
 export async function postTrendLeadsSearch(
   request: TrendLeadHttpRequest,
   auth: AuthContext | null,
   providers: LeadProvider[],
 ) {
   if (request.method.toUpperCase() !== 'POST') return { status: 405, body: { error: 'Method not allowed' } };
-  if (!auth?.accountId) return { status: 401, body: { error: 'Authentication required' } };
 
   const body = typeof request.body === 'object' && request.body !== null
     ? request.body as Record<string, unknown>
@@ -28,7 +30,11 @@ export async function postTrendLeadsSearch(
   };
 
   try {
-    const result = await findLeadsFromTrends(auth.accountId, query, providers);
+    // Use a stable public account namespace for anonymous discovery. When a
+    // user is signed in, preserve the user's account id for downstream
+    // persistence/scoring behavior.
+    const accountId = auth?.accountId ?? 'public-search';
+    const result = await findLeadsFromTrends(accountId, query, providers);
     return { status: 200, body: result };
   } catch (error) {
     return {
