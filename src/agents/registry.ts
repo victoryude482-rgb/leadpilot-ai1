@@ -10,6 +10,8 @@ export const AGENTS: AgentDefinition[] = [
   { id: 'ecommerce-opportunity', name: 'AI E-commerce Opportunity', description: 'Identify emerging product categories and underserved market opportunities.', category: 'research', status: 'planned', capabilities: ['market signals', 'product opportunities', 'competition analysis'] },
   { id: 'content', name: 'AI Business Content Agent', description: 'Generate practical business content and campaign ideas.', category: 'content', status: 'planned', capabilities: ['social content', 'blog ideas', 'content calendars'] },
   { id: 'command-agent', name: 'AI Command Agent', description: 'Describe the outcome you want in plain language and route it to the right agents, with optional multi-agent research chains.', category: 'research', status: 'live', capabilities: ['natural-language commands', 'intent routing', 'multi-agent chains', 'result summaries'] },
+  { id: 'workpilot', name: 'WorkPilot AI', description: 'Find work opportunities across major marketplaces, score them, understand the client problem and prepare a solution plan and proposal.', category: 'research', status: 'beta', capabilities: ['job discovery', 'multi-marketplace search', 'problem solving', 'proposal drafting', 'match scoring'] },
+  { id: 'website-brand', name: 'AI Website & Brand Agent', description: 'Turn a business idea into an editable website structure and logo asset, with optional generative logo rendering.', category: 'content', status: 'beta', capabilities: ['website generation', 'JSON-first editing', 'logo generation', 'brand concepts', 'export-ready assets'] },
 ];
 
 export function getAgent(id: AgentName): AgentDefinition | undefined { return AGENTS.find((agent) => agent.id === id); }
