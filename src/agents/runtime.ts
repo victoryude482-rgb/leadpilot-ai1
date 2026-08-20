@@ -6,6 +6,7 @@ import { planRecovery, technicalDecisionNeeded, type TechnicalDecision } from '.
 import { runWorkPilot } from './workpilot';
 import { runWebsiteBrand } from './website-brand';
 import { requestAgentHelp } from './collaboration';
+import { finalizeAgentResult } from './human-quality';
 import type { AgentName } from '../../docs/agent-contract';
 import type { LeadSearchQuery } from '../providers/lead-provider';
 
@@ -20,7 +21,7 @@ async function runLeadFinderWithRecovery(auth: AuthContext | null, input: AgentR
   let current: LeadSearchQuery = { keywords: input.query || input.industry || 'business', industry: input.industry, country: input.country, city: input.city || input.location, limit: input.limit };
   const recoveryLog: string[] = []; const technicalDecisions: TechnicalDecision[] = [];
   let result = await handleLeadFinder(auth, current, providers);
-  for (let attempt = 0; attempt < 2; attempt += 1) { const body = result.body as LeadSearchBody; const results = body.results ?? []; if (results.length > 0) break; const warnings = body.warnings ?? []; const decisions = planRecovery(current, warnings, results.length); for (const decision of decisions) { recoveryLog.push(decision.reason); if (decision.technicalDecision) technicalDecisions.push(decision.technicalDecision); } const next = decisions.find((decision) => decision.query && decision.action === 'broaden') ?? decisions.find((decision) => decision.query && decision.action === 'retry'); if (!next?.query) break; current = { keywords: next.query.keywords || current.keywords || current.industry || 'business', industry: next.query.industry ?? current.industry, country: next.query.country ?? current.country, city: next.query.city ?? current.city, limit: next.query.limit ?? current.limit }; result = await handleLeadFinder(auth, current, providers); }
+  for (let attempt = 0; attempt < 2; attempt += 1) { const body = result.body as LeadSearchBody; const results = body.results ?? []; if (results.length > 0) break; const decisions = planRecovery(current, body.warnings ?? [], results.length); for (const decision of decisions) { recoveryLog.push(decision.reason); if (decision.technicalDecision) technicalDecisions.push(decision.technicalDecision); } const next = decisions.find((decision) => decision.query && decision.action === 'broaden') ?? decisions.find((decision) => decision.query && decision.action === 'retry'); if (!next?.query) break; current = { keywords: next.query.keywords || current.keywords || current.industry || 'business', industry: next.query.industry ?? current.industry, country: next.query.country ?? current.country, city: next.query.city ?? current.city, limit: next.query.limit ?? current.limit }; result = await handleLeadFinder(auth, current, providers); }
   const body = result.body as LeadSearchBody; return { ...result, recovery: { autonomous: true, attempts: recoveryLog.length ? Math.min(recoveryLog.length, 3) : 1, actions: recoveryLog, technicalDecisionNeeded: technicalDecisionNeeded(body.warnings ?? []), technicalDecisions } };
 }
 async function runEvidenceWithRecovery(input: AgentRunInput) {
@@ -33,16 +34,13 @@ async function runEvidenceWithRecovery(input: AgentRunInput) {
 export async function runAgent(auth: AuthContext | null, input: AgentRunInput) {
   const agent = getAgent(input.agent);
   if (!agent) return { status: 404, body: { error: `Unknown agent: ${input.agent}` } };
+  let result: unknown;
   if (input.agent === 'workpilot') {
-    const result = await runWorkPilot(input);
-    const needsHelp = result.results.length === 0 || result.results.every((item: { matchScore?: number }) => (item.matchScore ?? 0) < 55);
-    if (needsHelp) {
-      const help = await requestAgentHelp('workpilot', 'opportunity-finder', input);
-      return { ...result, collaboration: { ...(result as { collaboration?: object }).collaboration, handoffs: [help.handoff], specialistContext: help.result } };
-    }
-    return result;
-  }
-  if (input.agent === 'website-brand') return runWebsiteBrand(input);
-  if (searchableAgents.has(input.agent)) { const providers = configuredLeadProviders(); if (input.agent === 'lead-finder') return runLeadFinderWithRecovery(auth, input, providers); if (isEvidenceAgent(input.agent)) return runEvidenceWithRecovery(input); }
-  return { status: 501, body: { error: `Agent ${input.agent} is registered but does not have an executable runtime yet.`, agent: input.agent, capabilities: agent.capabilities } };
+    const work = await runWorkPilot(input);
+    const needsHelp = work.results.length === 0 || work.results.every((item: { matchScore?: number }) => (item.matchScore ?? 0) < 55);
+    result = needsHelp ? { ...work, collaboration: { ...(work as { collaboration?: object }).collaboration, handoffs: [(await requestAgentHelp('workpilot', 'opportunity-finder', input)).handoff], specialistContext: (await requestAgentHelp('workpilot', 'opportunity-finder', input)).result } } : work;
+  } else if (input.agent === 'website-brand') result = await runWebsiteBrand(input);
+  else if (searchableAgents.has(input.agent)) { const providers = configuredLeadProviders(); result = input.agent === 'lead-finder' ? await runLeadFinderWithRecovery(auth, input, providers) : isEvidenceAgent(input.agent) ? await runEvidenceWithRecovery(input) : { status: 501, body: { error: 'Agent runtime unavailable' } }; }
+  else result = { status: 501, body: { error: `Agent ${input.agent} is registered but does not have an executable runtime yet.`, agent: input.agent, capabilities: agent.capabilities } };
+  return finalizeAgentResult(result);
 }
