@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { runWorkPilot } from '../../../../src/agents/workpilot';
+import { runWorkPilot } from '../../../src/agents/workpilot';
 
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
