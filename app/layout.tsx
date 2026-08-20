@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import './leadpilot.css';
 
 export const metadata: Metadata = {
-  title: 'Victory AI',
-  description: 'AI command center for leads, trends, opportunities, tenders, products, competitors, outreach and content.',
+  title: 'LeadPilot AI',
+  description: 'Dynamic AI command center for leads, trends, jobs, websites, agents and client communication.',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
