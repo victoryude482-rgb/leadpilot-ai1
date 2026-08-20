@@ -11,7 +11,9 @@ export type AgentName =
   | 'verification'
   | 'scoring'
   | 'crm'
-  | 'sales';
+  | 'sales'
+  | 'workpilot'
+  | 'website-brand';
 
 export type AgentEventType =
   | 'lead.discovered'
@@ -29,50 +31,7 @@ export type AgentEventType =
   | 'meeting.booked'
   | 'customer.won';
 
-export interface AgentEvent<T = Record<string, unknown>> {
-  eventId: string;
-  accountId: string;
-  leadId?: string;
-  agent: AgentName;
-  type: AgentEventType;
-  payload: T;
-  createdAt: string;
-}
-
-export interface MemoryRecord<T = Record<string, unknown>> {
-  id: string;
-  accountId: string;
-  leadId?: string;
-  businessId?: string;
-  conversationId?: string;
-  scope: 'account' | 'lead' | 'conversation' | 'system';
-  memoryType: 'verified_fact' | 'inference' | 'summary' | 'preference' | 'configuration';
-  content: T;
-  source?: string;
-  confidence?: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface AgentDefinition {
-  id: AgentName;
-  name: string;
-  description: string;
-  category: 'research' | 'sales' | 'monitoring' | 'content';
-  status: 'live' | 'beta' | 'planned';
-  capabilities: string[];
-}
-
-export interface AgentMemoryStore {
-  getRelevantMemory(query: {
-    accountId: string;
-    leadId?: string;
-    conversationId?: string;
-    scopes?: MemoryRecord['scope'][];
-    limit?: number;
-  }): Promise<MemoryRecord[]>;
-
-  saveMemory<T>(memory: Omit<MemoryRecord<T>, 'id' | 'createdAt' | 'updatedAt'>): Promise<MemoryRecord<T>>;
-
-  appendEvent<T>(event: Omit<AgentEvent<T>, 'eventId' | 'createdAt'>): Promise<AgentEvent<T>>;
-}
+export interface AgentEvent<T = Record<string, unknown>> { eventId:string; accountId:string; leadId?:string; agent:AgentName; type:AgentEventType; payload:T; createdAt:string; }
+export interface MemoryRecord<T = Record<string, unknown>> { id:string; accountId:string; leadId?:string; businessId?:string; conversationId?:string; scope:'account'|'lead'|'conversation'|'system'; memoryType:'verified_fact'|'inference'|'summary'|'preference'|'configuration'; content:T; source?:string; confidence?:number; createdAt:string; updatedAt:string; }
+export interface AgentDefinition { id:AgentName; name:string; description:string; category:'research'|'sales'|'monitoring'|'content'; status:'live'|'beta'|'planned'; capabilities:string[]; }
+export interface AgentMemoryStore { getRelevantMemory(query:{accountId:string;leadId?:string;conversationId?:string;scopes?:MemoryRecord['scope'][];limit?:number}):Promise<MemoryRecord[]>; saveMemory<T>(memory:Omit<MemoryRecord<T>,'id'|'createdAt'|'updatedAt'>):Promise<MemoryRecord<T>>; appendEvent<T>(event:Omit<AgentEvent<T>,'eventId'|'createdAt'>):Promise<AgentEvent<T>>; }
