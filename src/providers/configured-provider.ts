@@ -1,5 +1,4 @@
 import { ApiLeadProvider, type LeadProvider } from './lead-provider';
-import { AgentDiscoveryLeadProvider } from './agent-discovery-provider';
 import { ApolloLeadProvider } from './apollo-provider';
 import { OpenStreetMapLeadProvider } from './openstreetmap-provider';
 import { PhotonLeadProvider } from './photon-provider';
@@ -21,13 +20,11 @@ export function configuredLeadProviders(): LeadProvider[] {
   const apolloKey = process.env.APOLLO_API_KEY?.trim();
   if (apolloKey && process.env.APOLLO_USE_PAID_SEARCH === 'true') providers.push(new ApolloLeadProvider(apolloKey));
 
-  // Free sources that return actual business/place records.
-  providers.push(new AgentDiscoveryLeadProvider());
+  // Free sources that return actual business/place records. OSM uses real
+  // category tags; the older name-regex discovery adapter is intentionally gone.
   providers.push(new PhotonLeadProvider());
   providers.push(new OpenStreetMapLeadProvider());
 
-  // Optional web discovery. Never enabled by default because search results can be articles.
   if (webDiscoveryEnabled) providers.push(new DuckDuckGoLeadProvider());
-
   return providers;
 }
