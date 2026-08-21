@@ -1,0 +1,20 @@
+import { NextResponse } from 'next/server';
+import { getSupabaseAuthenticatedUser } from '../../../src/auth/supabase-server';
+import { configuredLeadStore } from '../../../src/leads/store-factory';
+import { canSendOutreach } from '../../../src/agents/outreach-guard';
+import { configuredEmailProvider } from '../../../src/outreach/email-provider';
+import { getAgentMemoryBus } from '../../../src/agents/memory-bus';
+
+export async function POST(request:Request){
+ const user=await getSupabaseAuthenticatedUser(request);if(!user)return NextResponse.json({error:'Sign in before sending outreach.'},{status:401});
+ const body=await request.json().catch(()=>({}));if(body.approved!==true)return NextResponse.json({error:'Human approval is required. Set approved=true only after review.'},{status:400});
+ const leadId=typeof body.leadId==='string'?body.leadId:'';if(!leadId)return NextResponse.json({error:'leadId is required.'},{status:400});
+ const store=configuredLeadStore();const lead=(await store.listLeads(user.id)).find(item=>item.id===leadId);if(!lead)return NextResponse.json({error:'Lead not found.'},{status:404});
+ const business=store.getBusiness?await store.getBusiness(lead.businessId):null;if(!business)return NextResponse.json({error:'Business record not found.'},{status:404});
+ const guard=canSendOutreach({email:business.email,phone:business.phone,optedOut:Boolean(body.optedOut),sentToday:0});if(!guard.allowed)return NextResponse.json({error:guard.reason},{status:409});
+ if(!business.email)return NextResponse.json({error:'Email sending requires a verified email address; the guard only found a phone channel.'},{status:409});
+ const provider=configuredEmailProvider();if(!provider)return NextResponse.json({error:'Email sending is not configured. Add RESEND_API_KEY and OUTREACH_FROM_EMAIL; no message was sent.'},{status:503});
+ const subject=typeof body.subject==='string'?body.subject.trim():'';const text=typeof body.text==='string'?body.text.trim():'';if(!subject||!text)return NextResponse.json({error:'subject and text are required.'},{status:400});
+ try{const sent=await provider.send({to:business.email,subject,text});await getAgentMemoryBus().appendEvent({accountId:user.id,leadId,agent:'outreach',type:'outreach.sent',payload:{provider:'resend',messageId:sent.id}});return NextResponse.json({sent:true,messageId:sent.id},{status:200});}
+ catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Email send failed; no confirmed send result.'},{status:502});}
+}
