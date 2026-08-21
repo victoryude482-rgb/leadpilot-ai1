@@ -5,15 +5,33 @@ import { runEvidenceAgent } from './evidence-agent';
 import { planRecovery, technicalDecisionNeeded, type TechnicalDecision } from './self-healing';
 import { runWorkPilot } from './workpilot';
 import { runWebsiteBrand } from './website-brand';
+import { runGbpAudit } from './gbp-audit';
+import { runGbpOutreach } from './gbp-outreach';
+import { deliverGbpFix } from './gbp-fix';
 import { requestAgentHelp } from './collaboration';
 import { finalizeAgentResult } from './human-quality';
+import { recordRevenueEvent } from './revenue-store';
 import type { AgentName } from '../../docs/agent-contract';
 import type { LeadSearchQuery } from '../providers/lead-provider';
+import type { LeadStatus, BusinessRecord } from '../leads/model';
 
 const EVIDENCE_AGENTS = ['trend-finder', 'opportunity-finder', 'tender-finder', 'ecommerce-opportunity'] as const;
 type EvidenceAgent = typeof EVIDENCE_AGENTS[number];
 const isEvidenceAgent = (agent: AgentName): agent is EvidenceAgent => EVIDENCE_AGENTS.includes(agent as EvidenceAgent);
-export interface AgentRunInput { agent: AgentName; query: string; location?: string; industry?: string; country?: string; city?: string; limit?: number; }
+export interface AgentRunInput {
+  agent: AgentName;
+  query: string;
+  location?: string;
+  industry?: string;
+  country?: string;
+  city?: string;
+  limit?: number;
+  website?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  dealStatus?: LeadStatus;
+}
 const searchableAgents = new Set<AgentName>(['lead-finder', ...EVIDENCE_AGENTS]);
 type LeadSearchBody = { results?: unknown[]; warnings?: string[]; [key: string]: unknown };
 
@@ -35,15 +53,22 @@ export async function runAgent(auth: AuthContext | null, input: AgentRunInput) {
   const agent = getAgent(input.agent);
   if (!agent) return { status: 404, body: { error: `Unknown agent: ${input.agent}` } };
   let result: any;
+  const providers = configuredLeadProviders();
   if (input.agent === 'workpilot') {
     const work = await runWorkPilot(input);
     const needsHelp = work.results.length === 0 || work.results.every((item: { matchScore?: number }) => (item.matchScore ?? 0) < 55);
-    if (needsHelp) {
-      const help = await requestAgentHelp('workpilot', 'opportunity-finder', input);
-      result = { ...work, collaboration: { ...(work as { collaboration?: object }).collaboration, handoffs: [help.handoff], specialistContext: help.result } };
-    } else result = work;
+    if (needsHelp) { const help = await requestAgentHelp('workpilot', 'opportunity-finder', input); result = { ...work, collaboration: { ...(work as { collaboration?: object }).collaboration, handoffs: [help.handoff], specialistContext: help.result } }; }
+    else result = work;
   } else if (input.agent === 'website-brand') result = await runWebsiteBrand(input);
-  else if (searchableAgents.has(input.agent)) { const providers = configuredLeadProviders(); result = input.agent === 'lead-finder' ? await runLeadFinderWithRecovery(auth, input, providers) : isEvidenceAgent(input.agent) ? await runEvidenceWithRecovery(input) : { status: 501, body: { error: 'Agent runtime unavailable' } }; }
+  else if (input.agent === 'gbp-audit') result = await runGbpAudit(auth?.accountId ?? 'public-search', providers, { keywords: input.query, industry: input.industry, country: input.country, city: input.city || input.location, limit: input.limit });
+  else if (input.agent === 'gbp-outreach') result = await runGbpOutreach(auth?.accountId ?? 'public-search', providers, { keywords: input.query, industry: input.industry, country: input.country, city: input.city || input.location, limit: input.limit });
+  else if (input.agent === 'gbp-fix') {
+    const business: BusinessRecord = { id: crypto.randomUUID(), name: input.query, website: input.website, phone: input.phone, email: input.email, address: input.address, city: input.city || input.location, country: input.country, industry: input.industry, source: 'client-provided' };
+    result = await deliverGbpFix({ accountId: auth?.accountId ?? 'public-search', dealStatus: input.dealStatus ?? 'NEW', business });
+    if (result.delivered && auth?.accountId) {
+      try { await recordRevenueEvent(auth.accountId, { leadId: undefined, agentId: 'gbp-fix', event: 'won', value: 0, currency: 'USD', occurredAt: new Date().toISOString() }); } catch { /* revenue storage is optional */ }
+    }
+  } else if (searchableAgents.has(input.agent)) result = input.agent === 'lead-finder' ? await runLeadFinderWithRecovery(auth, input, providers) : isEvidenceAgent(input.agent) ? await runEvidenceWithRecovery(input) : { status: 501, body: { error: 'Agent runtime unavailable' } };
   else result = { status: 501, body: { error: `Agent ${input.agent} is registered but does not have an executable runtime yet.`, agent: input.agent, capabilities: agent.capabilities } };
   return finalizeAgentResult(result);
 }
