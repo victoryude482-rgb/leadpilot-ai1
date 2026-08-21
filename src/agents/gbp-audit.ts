@@ -1,0 +1,77 @@
+import type { BusinessRecord } from '../leads/model';
+import type { LeadProvider } from '../providers/lead-provider';
+import { runLeadFinderPipeline, type FinderPipelineResult } from '../pipeline/lead-finder-pipeline';
+
+export type GbpAuditGrade = 'GOOD' | 'NEEDS_WORK' | 'POOR';
+export type GbpIssueCode = 'NO_WEBSITE' | 'DEAD_WEBSITE' | 'NO_PHONE' | 'NO_ADDRESS' | 'NO_CATEGORY';
+export interface GbpIssue { code: GbpIssueCode; title: string; evidence: string; severity: 'high' | 'medium' | 'low' }
+export interface GbpAudit {
+  business: BusinessRecord;
+  score: number;
+  grade: GbpAuditGrade;
+  issues: GbpIssue[];
+  basis: 'public-directory-inference' | 'google-places';
+  disclaimer: string;
+  checkedAt: string;
+}
+
+async function websiteReachability(url?: string): Promise<{ checked: boolean; reachable: boolean; detail?: string }> {
+  if (!url) return { checked: false, reachable: false };
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    let response: Response;
+    try { response = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: controller.signal, cache: 'no-store' }); }
+    catch { response = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal, cache: 'no-store' }); }
+    clearTimeout(timer);
+    return { checked: true, reachable: response.ok, detail: `${response.status} ${response.statusText}` };
+  } catch (error) {
+    return { checked: true, reachable: false, detail: error instanceof Error ? error.message : 'Website request failed' };
+  }
+}
+
+async function googlePlacesCheck(business: BusinessRecord): Promise<Partial<GbpAudit> | null> {
+  const key = process.env.GOOGLE_PLACES_API_KEY?.trim();
+  if (!key) return null;
+  const text = [business.name, business.address, business.city, business.country].filter(Boolean).join(', ');
+  if (!text) return null;
+  try {
+    const search = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.primaryType' },
+      body: JSON.stringify({ textQuery: text, maxResultCount: 1 }), cache: 'no-store',
+    });
+    if (!search.ok) return null;
+    const data = await search.json() as { places?: Array<{ id?: string; displayName?: { text?: string }; formattedAddress?: string; nationalPhoneNumber?: string; primaryType?: string }> };
+    const place = data.places?.[0];
+    if (!place) return null;
+    const issues: GbpIssue[] = [];
+    if (!place.formattedAddress) issues.push({ code: 'NO_ADDRESS', title: 'No address returned by Google Places', evidence: 'The Google Places record did not include a formatted address.', severity: 'medium' });
+    if (!place.nationalPhoneNumber) issues.push({ code: 'NO_PHONE', title: 'No phone returned by Google Places', evidence: 'The Google Places record did not include a national phone number.', severity: 'medium' });
+    if (!place.primaryType) issues.push({ code: 'NO_CATEGORY', title: 'No primary category returned by Google Places', evidence: 'The Google Places record did not include a primary type.', severity: 'medium' });
+    return { score: Math.max(0, 100 - issues.reduce((sum, issue) => sum + (issue.severity === 'medium' ? 15 : 10), 0)), grade: issues.length >= 3 ? 'POOR' : issues.length ? 'NEEDS_WORK' : 'GOOD', issues, basis: 'google-places', disclaimer: 'This audit used the optional Google Places API record returned for the searched business. It is not a claim that every field in the live Google Business Profile is complete.' };
+  } catch { return null; }
+}
+
+export async function auditBusiness(business: BusinessRecord): Promise<GbpAudit> {
+  const places = await googlePlacesCheck(business);
+  if (places) return { business, score: places.score ?? 100, grade: places.grade ?? 'GOOD', issues: places.issues ?? [], basis: 'google-places', disclaimer: places.disclaimer ?? '', checkedAt: new Date().toISOString() };
+
+  const issues: GbpIssue[] = [];
+  if (!business.website) issues.push({ code: 'NO_WEBSITE', title: 'No public website listed', evidence: 'No website was present in the public directory data used by LeadPilot.', severity: 'high' });
+  else {
+    const reachability = await websiteReachability(business.website);
+    if (reachability.checked && !reachability.reachable) issues.push({ code: 'DEAD_WEBSITE', title: 'Website was not reachable', evidence: `The public website check did not receive a successful response (${reachability.detail ?? 'unknown error'}).`, severity: 'high' });
+  }
+  if (!business.phone) issues.push({ code: 'NO_PHONE', title: 'No public phone listed', evidence: 'No phone number was present in the public directory data used by LeadPilot.', severity: 'medium' });
+  if (!business.address && !business.city) issues.push({ code: 'NO_ADDRESS', title: 'No public address listed', evidence: 'No street address or city was present in the public directory data used by LeadPilot.', severity: 'medium' });
+  if (!business.industry) issues.push({ code: 'NO_CATEGORY', title: 'No category/industry listed', evidence: 'No category or industry was available in the public directory record.', severity: 'low' });
+  const deductions = issues.reduce((sum, issue) => sum + (issue.code === 'NO_WEBSITE' || issue.code === 'DEAD_WEBSITE' ? 30 : issue.code === 'NO_PHONE' || issue.code === 'NO_ADDRESS' ? 15 : 10), 0);
+  const score = Math.max(0, 100 - deductions);
+  return { business, score, grade: score >= 80 ? 'GOOD' : score >= 55 ? 'NEEDS_WORK' : 'POOR', issues, basis: 'public-directory-inference', disclaimer: 'This is an inferred listing-health audit from public directory data and a live website reachability check. It is not a direct read of the business\'s real Google Business Profile. Configure GOOGLE_PLACES_API_KEY for the optional Google Places check.', checkedAt: new Date().toISOString() };
+}
+
+export async function runGbpAudit(accountId: string, providers: LeadProvider[], query: { keywords?: string; industry?: string; country?: string; city?: string; limit?: number }): Promise<{ audits: GbpAudit[]; warnings: string[] }> {
+  const result = await runLeadFinderPipeline(accountId, providers, query);
+  const audits = (await Promise.all(result.results.map((item: FinderPipelineResult) => auditBusiness(item.business)))).filter((audit) => audit.issues.length > 0);
+  return { audits, warnings: result.warnings };
+}
