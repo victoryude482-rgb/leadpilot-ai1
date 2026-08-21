@@ -15,27 +15,46 @@ interface GeocodeResult { osm_type?: string; osm_id?: number; display_name?: str
 
 const TAG_PATTERNS: Array<{ pattern: RegExp; tags: string[] }> = [
   { pattern: /laptop|computer|pc|electronics?|mobile|phone|tech|technology|it\b/i, tags: ['shop~"^(computer|electronics|mobile_phone|telecommunication)$"', 'office~"^(it|software|telecommunication)$"'] },
-  { pattern: /fintech|finance|financial|bank/i, tags: ['amenity="bank"', 'office~"^(financial|insurance)$"'] },
-  { pattern: /restaurant|food|cafe|coffee/i, tags: ['amenity~"^(restaurant|cafe|fast_food)$"'] },
-  { pattern: /hotel|hospitality/i, tags: ['tourism="hotel"', 'tourism="guest_house"'] },
-  { pattern: /school|education/i, tags: ['amenity~"^(school|college|university)$"'] },
-  { pattern: /health|medical|hospital|clinic/i, tags: ['amenity~"^(hospital|clinic|doctors|pharmacy)$"'] },
+  { pattern: /fintech|finance|financial|bank|accounting|insurance/i, tags: ['amenity="bank"', 'office~"^(financial|insurance|accountant)$"'] },
+  { pattern: /restaurant|food|cafe|coffee|bakery|bar|catering/i, tags: ['amenity~"^(restaurant|cafe|fast_food|bar|pub)$"', 'shop="bakery"'] },
+  { pattern: /hotel|hospitality|guest.?house/i, tags: ['tourism="hotel"', 'tourism="guest_house"', 'tourism="hostel"'] },
+  { pattern: /school|education|college|university/i, tags: ['amenity~"^(school|college|university)$"'] },
+  { pattern: /health|medical|hospital|clinic|dentist|pharmacy/i, tags: ['amenity~"^(hospital|clinic|doctors|dentist|pharmacy)$"'] },
   { pattern: /real.?estate|property|house|housing/i, tags: ['office="estate_agent"', 'shop="estate_agent"'] },
-  { pattern: /logistics|delivery|transport/i, tags: ['office~"^(logistics|transport)$"'] },
+  { pattern: /logistics|delivery|transport|courier/i, tags: ['office~"^(logistics|transport|courier)$"'] },
+  { pattern: /salon|barber|beauty|hair|spa/i, tags: ['shop~"^(hairdresser|beauty)$"', 'amenity="spa"'] },
+  { pattern: /gym|fitness|workout|yoga/i, tags: ['leisure~"^(fitness_centre|sports_centre|pitch)$"', 'sport~"^(fitness|yoga)$"'] },
+  { pattern: /legal|lawyer|attorney|solicitor/i, tags: ['office~"^(lawyer|notary)$"'] },
+  { pattern: /marketing|advertising|agency|branding|public relations|pr\b/i, tags: ['office~"^(advertising_agency|marketing)$"'] },
+  { pattern: /construction|builder|building|contractor|plumber|electrician/i, tags: ['craft~"^(builder|carpenter|plumber|electrician|roofer|painter)$"', 'office="construction_company"'] },
+  { pattern: /auto|car|vehicle|mechanic|repair|tyre|tire/i, tags: ['shop~"^(car|car_repair|tyres|motorcycle)$"', 'craft="car_repair"'] },
+  { pattern: /retail|shop|store|fashion|clothing|supermarket|grocery/i, tags: ['shop'] },
+  { pattern: /cleaning|janitorial|laundry/i, tags: ['shop~"^(laundry|dry_cleaning)$"', 'office="cleaning"'] },
+  { pattern: /consulting|consultant|advisory|management/i, tags: ['office~"^(consulting|company|business)$"'] },
 ];
 
 function escapeRegex(value: string): string { return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function inferIndustry(tags: Record<string, string>, fallback?: string): string | undefined {
-  const shop = tags.shop, office = tags.office, amenity = tags.amenity, tourism = tags.tourism;
+  const shop = tags.shop, office = tags.office, amenity = tags.amenity, tourism = tags.tourism, leisure = tags.leisure, craft = tags.craft;
   if (shop && /computer|electronics|mobile_phone|telecommunication/.test(shop)) return 'Technology';
   if (shop === 'estate_agent' || office === 'estate_agent') return 'Real estate';
   if (office && /it|software|telecommunication/.test(office)) return 'Technology';
-  if (amenity === 'bank' || office === 'financial' || office === 'insurance') return 'Financial services';
-  if (amenity && /restaurant|cafe|fast_food/.test(amenity)) return 'Food & hospitality';
-  if (tourism && /hotel|guest_house/.test(tourism)) return 'Hospitality';
+  if (amenity === 'bank' || office === 'financial' || office === 'insurance' || office === 'accountant') return 'Financial services';
+  if (amenity && /restaurant|cafe|fast_food|bar|pub/.test(amenity)) return 'Food & hospitality';
+  if (shop === 'bakery') return 'Food & hospitality';
+  if (tourism && /hotel|guest_house|hostel/.test(tourism)) return 'Hospitality';
   if (amenity && /school|college|university/.test(amenity)) return 'Education';
-  if (amenity && /hospital|clinic|doctors|pharmacy/.test(amenity)) return 'Healthcare';
-  if (office && /logistics|transport/.test(office)) return 'Logistics & transport';
+  if (amenity && /hospital|clinic|doctors|dentist|pharmacy/.test(amenity)) return 'Healthcare';
+  if (office && /logistics|transport|courier/.test(office)) return 'Logistics & transport';
+  if (shop && /hairdresser|beauty/.test(shop) || amenity === 'spa') return 'Beauty & wellness';
+  if (leisure && /fitness_centre|sports_centre/.test(leisure)) return 'Fitness & sports';
+  if (office && /lawyer|notary/.test(office)) return 'Legal services';
+  if (office && /advertising_agency|marketing/.test(office)) return 'Marketing';
+  if (craft && /builder|carpenter|plumber|electrician|roofer|painter/.test(craft) || office === 'construction_company') return 'Construction & trades';
+  if (shop && /car|car_repair|tyres|motorcycle/.test(shop) || craft === 'car_repair') return 'Automotive';
+  if (shop) return 'Retail';
+  if (office === 'cleaning' || shop === 'laundry' || shop === 'dry_cleaning') return 'Cleaning services';
+  if (office && /consulting|company|business/.test(office)) return 'Consulting';
   return fallback;
 }
 function mapElement(element: OverpassElement, query: LeadSearchQuery): DiscoveredBusiness | null {
@@ -45,43 +64,11 @@ function mapElement(element: OverpassElement, query: LeadSearchQuery): Discovere
 }
 function buildTagQueries(query: LeadSearchQuery): string[] {
   const text = [query.keywords, query.industry].filter(Boolean).join(' ');
-  return TAG_PATTERNS.find((entry) => entry.pattern.test(text))?.tags ?? ['shop', 'office~"^(company|consulting)$"', 'amenity~"^(business_centre|coworking_space)$"'];
+  return TAG_PATTERNS.find((entry) => entry.pattern.test(text))?.tags ?? ['shop', 'office~"^(company|consulting|business)$"', 'amenity~"^(business_centre|coworking_space)$"'];
 }
-async function fetchWithTimeout(url: string | URL, init: RequestInit, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try { return await fetch(url, { ...init, signal: controller.signal }); } finally { clearTimeout(timer); }
-}
-async function geocode(location: string): Promise<GeocodeResult | null> {
-  const url = new URL(NOMINATIM_ENDPOINT); url.searchParams.set('q', location); url.searchParams.set('format', 'json'); url.searchParams.set('limit', '1');
-  try { const response = await fetchWithTimeout(url, { headers: { accept: 'application/json', 'user-agent': USER_AGENT }, cache: 'no-store' }, GEOCODE_TIMEOUT_MS); if (!response.ok) return null; const data = await response.json() as GeocodeResult[]; return data[0] ?? null; } catch { return null; }
-}
-function buildSearchArea(result: GeocodeResult): string {
-  if (result.osm_type === 'relation' && result.osm_id) return `area(${3600000000 + result.osm_id})`;
-  const box = result.boundingbox; if (!box || box.length !== 4) throw new Error('Could not determine the geographic area for that location.');
-  const [south, north, west, east] = box.map(Number); return `bbox(${south},${west},${north},${east})`;
-}
-function buildOverpassQuery(searchArea: string, query: LeadSearchQuery, includeNameSearch: boolean): string {
-  const keyword = query.keywords?.trim() || query.industry?.trim();
-  const nameClause = includeNameSearch && keyword ? `nwr(${searchArea})[name~"${escapeRegex(keyword)}",i];` : '';
-  const tagClauses = buildTagQueries(query).map((tag) => `nwr(${searchArea})[${tag}];`).join('\n');
-  const limit = Math.min(Math.max(query.limit ?? 10, 1), 50);
-  return `[out:json][timeout:6];\n(\n${nameClause}\n${tagClauses}\n);\nout center ${limit};`;
-}
-async function overpass(searchQuery: string): Promise<OverpassElement[]> {
-  const attempts = OVERPASS_ENDPOINTS.map(async (endpoint) => {
-    const response = await fetchWithTimeout(endpoint, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8', accept: 'application/json', 'user-agent': USER_AGENT }, body: new URLSearchParams({ data: searchQuery }).toString(), cache: 'no-store' }, OVERPASS_TIMEOUT_MS);
-    if (!response.ok) throw new Error(`Overpass ${response.status}`);
-    const data = await response.json() as { elements?: OverpassElement[] }; return data.elements ?? [];
-  });
-  try { return await Promise.any(attempts); } catch { throw new Error('All OpenStreetMap search sources were unavailable'); }
-}
-
-export class OpenStreetMapLeadProvider implements LeadProvider {
-  async search(query: LeadSearchQuery): Promise<DiscoveredBusiness[]> {
-    const location = [query.city, query.country].filter(Boolean).join(', ');
-    if (!location) throw new Error('OpenStreetMap requires a city or country.');
-    const geocoded = await geocode(location); if (!geocoded) throw new Error(`Could not locate ${location}.`);
-    const primary = await overpass(buildOverpassQuery(buildSearchArea(geocoded), query, true));
-    return primary.map((element) => mapElement(element, query)).filter((value): value is DiscoveredBusiness => Boolean(value)).slice(0, Math.min(Math.max(query.limit ?? 10, 1), 50));
-  }
-}
+async function fetchWithTimeout(url: string | URL, init: RequestInit, timeoutMs: number): Promise<Response> { const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs); try { return await fetch(url, { ...init, signal: controller.signal }); } finally { clearTimeout(timer); } }
+async function geocode(location: string): Promise<GeocodeResult | null> { const url = new URL(NOMINATIM_ENDPOINT); url.searchParams.set('q', location); url.searchParams.set('format', 'json'); url.searchParams.set('limit', '1'); try { const response = await fetchWithTimeout(url, { headers: { accept: 'application/json', 'user-agent': USER_AGENT }, cache: 'no-store' }, GEOCODE_TIMEOUT_MS); if (!response.ok) return null; const data = await response.json() as GeocodeResult[]; return data[0] ?? null; } catch { return null; } }
+function buildSearchArea(result: GeocodeResult): string { if (result.osm_type === 'relation' && result.osm_id) return `area(${3600000000 + result.osm_id})`; const box = result.boundingbox; if (!box || box.length !== 4) throw new Error('Could not determine the geographic area for that location.'); const [south, north, west, east] = box.map(Number); return `bbox(${south},${west},${north},${east})`; }
+function buildOverpassQuery(searchArea: string, query: LeadSearchQuery, includeNameSearch: boolean): string { const keyword = query.keywords?.trim() || query.industry?.trim(); const nameClause = includeNameSearch && keyword ? `nwr(${searchArea})[name~"${escapeRegex(keyword)}",i];` : ''; const tagClauses = buildTagQueries(query).map((tag) => `nwr(${searchArea})[${tag}];`).join('\n'); const limit = Math.min(Math.max(query.limit ?? 10, 1), 50); return `[out:json][timeout:6];\n(\n${nameClause}\n${tagClauses}\n);\nout center ${limit};`; }
+async function overpass(searchQuery: string): Promise<OverpassElement[]> { const attempts = OVERPASS_ENDPOINTS.map(async (endpoint) => { const response = await fetchWithTimeout(endpoint, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8', accept: 'application/json', 'user-agent': USER_AGENT }, body: new URLSearchParams({ data: searchQuery }).toString(), cache: 'no-store' }, OVERPASS_TIMEOUT_MS); if (!response.ok) throw new Error(`Overpass ${response.status}`); const data = await response.json() as { elements?: OverpassElement[] }; return data.elements ?? []; }); try { return await Promise.any(attempts); } catch { throw new Error('All OpenStreetMap search sources were unavailable'); } }
+export class OpenStreetMapLeadProvider implements LeadProvider { async search(query: LeadSearchQuery): Promise<DiscoveredBusiness[]> { const location = [query.city, query.country].filter(Boolean).join(', '); if (!location) throw new Error('OpenStreetMap requires a city or country.'); const geocoded = await geocode(location); if (!geocoded) throw new Error(`Could not locate ${location}.`); const primary = await overpass(buildOverpassQuery(buildSearchArea(geocoded), query, true)); return primary.map((element) => mapElement(element, query)).filter((value): value is DiscoveredBusiness => Boolean(value)).slice(0, Math.min(Math.max(query.limit ?? 10, 1), 50)); } }

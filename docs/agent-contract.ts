@@ -13,7 +13,10 @@ export type AgentName =
   | 'crm'
   | 'sales'
   | 'workpilot'
-  | 'website-brand';
+  | 'website-brand'
+  | 'gbp-audit'
+  | 'gbp-outreach'
+  | 'gbp-fix';
 
 export type AgentEventType =
   | 'lead.discovered'
@@ -29,7 +32,10 @@ export type AgentEventType =
   | 'conversation.updated'
   | 'lead.qualified'
   | 'meeting.booked'
-  | 'customer.won';
+  | 'customer.won'
+  | 'gbp.audited'
+  | 'gbp.fix_requested'
+  | 'gbp.fix_delivered';
 
 export interface AgentEvent<T = Record<string, unknown>> { eventId:string; accountId:string; leadId?:string; agent:AgentName; type:AgentEventType; payload:T; createdAt:string; }
 export interface MemoryRecord<T = Record<string, unknown>> { id:string; accountId:string; leadId?:string; businessId?:string; conversationId?:string; scope:'account'|'lead'|'conversation'|'system'; memoryType:'verified_fact'|'inference'|'summary'|'preference'|'configuration'; content:T; source?:string; confidence?:number; createdAt:string; updatedAt:string; }
