@@ -2,33 +2,6 @@ import type { LeadProvider } from '../providers/lead-provider';
 import { createOutreachDraft, type OutreachDraft } from './outreach';
 import { canSendOutreach } from './outreach-guard';
 import { runGbpAudit, type GbpAudit } from './gbp-audit';
-
-export interface GbpOutreachDraft extends OutreachDraft {
-  businessName: string;
-  eligible: boolean;
-  eligibilityReason: string;
-  issues: string[];
-  approvalRequired: true;
-}
-
-function issueSummary(audit: GbpAudit): string {
-  return audit.issues.map((issue) => `${issue.title}: ${issue.evidence}`).join(' ');
-}
-
-export async function runGbpOutreach(accountId: string, providers: LeadProvider[], query: { keywords?: string; industry?: string; country?: string; city?: string; limit?: number }): Promise<{ drafts: GbpOutreachDraft[]; audits: GbpAudit[]; warnings: string[] }> {
-  const { audits, warnings } = await runGbpAudit(accountId, providers, query);
-  const drafts = audits.map((audit) => {
-    const guard = canSendOutreach({ email: audit.business.email, phone: audit.business.phone, optedOut: false });
-    const draft = createOutreachDraft({
-      company: audit.business.name,
-      industry: audit.business.industry,
-      location: [audit.business.city, audit.business.country].filter(Boolean).join(', '),
-      website: audit.business.website,
-      email: audit.business.email,
-      painPoint: audit.issues.map((issue) => issue.title).join(', '),
-      evidence: issueSummary(audit),
-    }, 'Google Business Profile and local listing improvements');
-    return { ...draft, businessName: audit.business.name, eligible: guard.allowed, eligibilityReason: guard.reason, issues: audit.issues.map((issue) => issue.title), approvalRequired: true as const };
-  });
-  return { drafts, audits, warnings };
-}
+export interface GbpOutreachDraft extends OutreachDraft{leadId?:string;businessName:string;email?:string;eligible:boolean;eligibilityReason:string;issues:string[];approvalRequired:true}
+function issueSummary(audit:GbpAudit){return audit.issues.map(issue=>`${issue.title}: ${issue.evidence}`).join(' ')}
+export async function runGbpOutreach(accountId:string,providers:LeadProvider[],query:{keywords?:string;industry?:string;country?:string;city?:string;limit?:number}):Promise<{drafts:GbpOutreachDraft[];audits:GbpAudit[];warnings:string[]}>{const {audits,warnings}=await runGbpAudit(accountId,providers,query);const drafts=audits.map(audit=>{const guard=canSendOutreach({email:audit.business.email,phone:audit.business.phone,optedOut:false});const draft=createOutreachDraft({company:audit.business.name,industry:audit.business.industry,location:[audit.business.city,audit.business.country].filter(Boolean).join(', '),website:audit.business.website,email:audit.business.email,painPoint:audit.issues.map(issue=>issue.title).join(', '),evidence:issueSummary(audit)},'Google Business Profile and local listing improvements');return{...draft,leadId:audit.leadId,businessName:audit.business.name,email:audit.business.email,eligible:guard.allowed,eligibilityReason:guard.reason,issues:audit.issues.map(issue=>issue.title),approvalRequired:true as const}});return{drafts,audits,warnings}}
