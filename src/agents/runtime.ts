@@ -11,6 +11,7 @@ import { deliverGbpFix } from './gbp-fix';
 import { requestAgentHelp } from './collaboration';
 import { finalizeAgentResult } from './human-quality';
 import { recordRevenueEvent } from './revenue-store';
+import { runPythonAgent } from './python-worker';
 import type { AgentName } from '../../docs/agent-contract';
 import type { LeadSearchQuery } from '../providers/lead-provider';
 import type { LeadStatus, BusinessRecord } from '../leads/model';
@@ -43,6 +44,8 @@ async function runLeadFinderWithRecovery(auth: AuthContext | null, input: AgentR
   const body = result.body as LeadSearchBody; return { ...result, recovery: { autonomous: true, attempts: recoveryLog.length ? Math.min(recoveryLog.length, 3) : 1, actions: recoveryLog, technicalDecisionNeeded: technicalDecisionNeeded(body.warnings ?? []), technicalDecisions } };
 }
 async function runEvidenceWithRecovery(input: AgentRunInput) {
+  const python = await runPythonAgent(input);
+  if (python) return python;
   let query = input.query; const recoveryLog: string[] = []; const technicalDecisions: TechnicalDecision[] = [];
   let result = await runEvidenceAgent(input.agent as EvidenceAgent, query, { industry: input.industry, country: input.country, city: input.city || input.location, limit: input.limit });
   for (let attempt = 0; attempt < 2 && result.results.length === 0; attempt += 1) { const decisions = planRecovery({ keywords: query, industry: input.industry, country: input.country, city: input.city || input.location, limit: input.limit }, result.warnings, result.results.length); for (const decision of decisions) { recoveryLog.push(decision.reason); if (decision.technicalDecision) technicalDecisions.push(decision.technicalDecision); } const next = decisions.find((decision) => decision.query && decision.action === 'broaden') ?? decisions.find((decision) => decision.query && decision.action === 'retry'); if (!next?.query?.keywords) break; query = next.query.keywords; result = await runEvidenceAgent(input.agent as EvidenceAgent, query, { industry: input.industry, country: input.country, city: input.city || input.location, limit: input.limit }); }
@@ -55,7 +58,8 @@ export async function runAgent(auth: AuthContext | null, input: AgentRunInput) {
   let result: any;
   const providers = configuredLeadProviders();
   if (input.agent === 'workpilot') {
-    const work = await runWorkPilot(input);
+    const python = await runPythonAgent(input);
+    const work = python ?? await runWorkPilot(input);
     const needsHelp = work.results.length === 0 || work.results.every((item: { matchScore?: number }) => (item.matchScore ?? 0) < 55);
     if (needsHelp) { const help = await requestAgentHelp('workpilot', 'opportunity-finder', input); result = { ...work, collaboration: { ...(work as { collaboration?: object }).collaboration, handoffs: [help.handoff], specialistContext: help.result } }; }
     else result = work;
