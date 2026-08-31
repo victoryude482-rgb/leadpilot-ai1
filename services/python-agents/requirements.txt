@@ -1,0 +1,2 @@
+# LeadPilot Python agent worker intentionally uses only the Python standard library.
+# This keeps the worker free-first and deployable without a package install step.
