@@ -18,6 +18,22 @@ Free-first B2B lead intelligence, work discovery and AI business-building worksp
 - **GBP Outreach** creates personalized, approval-first drafts that mention only the specific issues found by the audit. It uses the existing outreach eligibility guard and never sends by itself.
 - **GBP Fix** creates a concrete fix plan only after a lead reaches `CUSTOMER`. Before that status it returns `withheld, deal not closed`. When delivered for a closed deal, the handoff can attribute the won event to `gbp-fix`.
 
+## Agent architecture
+
+LeadPilot uses a **TypeScript control plane + optional Python reasoning workforce**. TypeScript remains authoritative for authentication, CRM/status transitions, human approval, persistence, revenue events, outbound communication and web UI. Python handles reasoning-heavy research/problem-solving workloads when `PYTHON_AGENT_URL` is configured.
+
+The first Python-backed agents are **WorkPilot, Trend Finder, Opportunity Finder, Tender Finder and E-commerce Opportunity**. Website/Brand, GBP, Outreach and CRM side-effect layers remain TypeScript until their Python reasoning modules can be introduced without weakening the existing business rules. Every Python call has a TypeScript fallback, so the main app still works with no Python service configured.
+
+### Running the Python worker
+
+The worker is dependency-free and lives in `services/python-agents`. Run it with:
+
+```bash
+python services/python-agents/service.py
+```
+
+It listens on `PORT` (default `8000`) and exposes `GET /health` and `POST /run`. Deploy it as a small Render web service, then set `PYTHON_AGENT_URL` on the Next.js service to its public URL. If the worker is unavailable, LeadPilot automatically uses its TypeScript implementations.
+
 ## Agent safety and evidence
 
 LeadPilot distinguishes between **verified facts**, **publicly indexed evidence**, and **AI inferences**. Agents must not fabricate leads, contacts, prices, completed actions or Google Business Profile facts. External actions are approval-first. Outreach sending requires a signed-in user and explicit human approval.
@@ -28,7 +44,4 @@ LeadPilot distinguishes between **verified facts**, **publicly indexed evidence*
 - `GOOGLE_PLACES_API_KEY` is optional. Without it, GBP Audit uses the free public-directory path.
 - `SUPABASE_SERVICE_ROLE_KEY` enables server-side lead persistence and the Supabase agent memory bus. Without it, the app falls back to in-memory adapters.
 - `RESEND_API_KEY` and `OUTREACH_FROM_EMAIL` are optional. Without them, approval-first email sending returns a clear configuration error and does not send anything.
-
-## Deployment
-
-The existing Next.js application remains the main deployment. These agents are integrated into the same runtime rather than adding separate applications, so the GitHub/Render workflow stays simple.
+- `PYTHON_AGENT_URL` is optional. It enables the Python reasoning workforce. `PYTHON_AGENT_TIMEOUT_MS` controls its request timeout.
