@@ -1,41 +1,15 @@
 export type AgentName =
-  | 'lead-finder'
-  | 'trend-finder'
-  | 'opportunity-finder'
-  | 'tender-finder'
-  | 'competitor-monitor'
-  | 'outreach'
-  | 'ecommerce-opportunity'
-  | 'content'
-  | 'command-agent'
-  | 'verification'
-  | 'scoring'
-  | 'crm'
-  | 'sales'
-  | 'workpilot'
-  | 'website-brand'
-  | 'gbp-audit'
-  | 'gbp-outreach'
-  | 'gbp-fix';
+  | 'lead-finder' | 'trend-finder' | 'opportunity-finder' | 'tender-finder'
+  | 'competitor-monitor' | 'outreach' | 'ecommerce-opportunity' | 'content'
+  | 'command-agent' | 'general-manager' | 'verification' | 'scoring' | 'crm' | 'sales'
+  | 'workpilot' | 'website-brand' | 'gbp-audit' | 'gbp-outreach' | 'gbp-fix';
 
 export type AgentEventType =
-  | 'lead.discovered'
-  | 'lead.verified'
-  | 'lead.scored'
-  | 'lead.status_changed'
-  | 'opportunity.discovered'
-  | 'trend.discovered'
-  | 'tender.discovered'
-  | 'competitor.changed'
-  | 'outreach.drafted'
-  | 'outreach.sent'
-  | 'conversation.updated'
-  | 'lead.qualified'
-  | 'meeting.booked'
-  | 'customer.won'
-  | 'gbp.audited'
-  | 'gbp.fix_requested'
-  | 'gbp.fix_delivered';
+  | 'lead.discovered' | 'lead.verified' | 'lead.scored' | 'lead.status_changed'
+  | 'opportunity.discovered' | 'trend.discovered' | 'tender.discovered'
+  | 'competitor.changed' | 'outreach.drafted' | 'outreach.sent' | 'conversation.updated'
+  | 'lead.qualified' | 'meeting.booked' | 'customer.won' | 'gbp.audited'
+  | 'gbp.fix_requested' | 'gbp.fix_delivered';
 
 export interface AgentEvent<T = Record<string, unknown>> { eventId:string; accountId:string; leadId?:string; agent:AgentName; type:AgentEventType; payload:T; createdAt:string; }
 export interface MemoryRecord<T = Record<string, unknown>> { id:string; accountId:string; leadId?:string; businessId?:string; conversationId?:string; scope:'account'|'lead'|'conversation'|'system'; memoryType:'verified_fact'|'inference'|'summary'|'preference'|'configuration'; content:T; source?:string; confidence?:number; createdAt:string; updatedAt:string; }
