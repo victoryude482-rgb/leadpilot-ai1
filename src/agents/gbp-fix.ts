@@ -1,19 +1,9 @@
 import type { BusinessRecord, LeadStatus } from '../leads/model';
 import { auditBusiness, type GbpAudit } from './gbp-audit';
+import { runPythonAgent } from './python-worker';
 
-export interface GbpFixInput {
-  accountId: string;
-  dealStatus: LeadStatus;
-  business: BusinessRecord;
-}
-
-export interface GbpFixResult {
-  delivered: boolean;
-  reason: string;
-  audit?: GbpAudit;
-  plan?: string[];
-  dealStatus: LeadStatus;
-}
+export interface GbpFixInput { accountId: string; dealStatus: LeadStatus; business: BusinessRecord; }
+export interface GbpFixResult { delivered: boolean; reason: string; audit?: GbpAudit; plan?: string[]; dealStatus: LeadStatus; }
 
 function planFromAudit(audit: GbpAudit): string[] {
   return audit.issues.map((issue) => {
@@ -27,9 +17,15 @@ function planFromAudit(audit: GbpAudit): string[] {
   });
 }
 
-/** Explicit CRM/deal handoff. The fix plan is withheld until the lead is CUSTOMER. */
+/** TypeScript is the deal gate; Python creates the reasoning-heavy fix plan only after the deal is closed. */
 export async function deliverGbpFix(input: GbpFixInput): Promise<GbpFixResult> {
   if (input.dealStatus !== 'CUSTOMER') return { delivered: false, reason: 'withheld, deal not closed', dealStatus: input.dealStatus };
   const audit = await auditBusiness(input.business);
-  return { delivered: true, reason: 'Deal is closed; GBP fix plan delivered for human/client execution.', audit, plan: planFromAudit(audit), dealStatus: input.dealStatus };
+  const python = await runPythonAgent(
+    { agent: 'gbp-fix', query: input.business.name, location: input.business.city, industry: input.business.industry, country: input.business.country },
+    { business: input.business, audit, issues: audit.issues },
+  );
+  const pythonPlan = python?.results?.[0]?.plan;
+  const plan = Array.isArray(pythonPlan) ? pythonPlan.filter((item): item is string => typeof item === 'string') : planFromAudit(audit);
+  return { delivered: true, reason: python ? 'Deal is closed; Python generated the GBP fix plan for human/client execution.' : 'Deal is closed; TypeScript fallback generated the GBP fix plan for human/client execution.', audit, plan, dealStatus: input.dealStatus };
 }
