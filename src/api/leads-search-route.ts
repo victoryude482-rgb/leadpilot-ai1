@@ -1,5 +1,6 @@
 import { handleLeadFinder, type AuthContext } from './lead-finder-handler';
 import type { LeadProvider } from '../providers/lead-provider';
+import { interpretLeadQuery } from '../agents/lead-query';
 
 export interface HttpRequest {
   method: string;
@@ -28,13 +29,13 @@ export async function postLeadsSearch(
       : undefined;
   const location = typeof body.location === 'string' ? body.location.trim() : '';
 
-  const result = await handleLeadFinder(auth, {
+  const result = await handleLeadFinder(auth, interpretLeadQuery({
     industry: typeof body.industry === 'string' ? body.industry : undefined,
     country: typeof body.country === 'string' ? body.country : undefined,
     city: typeof body.city === 'string' ? body.city : location || undefined,
     keywords: query,
     limit: typeof body.limit === 'number' ? body.limit : undefined,
-  }, providers);
+  }), providers);
 
   return result;
 }
