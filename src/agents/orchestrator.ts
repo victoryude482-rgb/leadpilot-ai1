@@ -9,19 +9,20 @@ function chooseAgents(input: string, mode?: OrchestrationRequest['mode']): Agent
   const text = `${mode ?? ''} ${input}`.toLowerCase();
   const agents: AgentName[] = [];
   if (/job|upwork|indeed|freelancer|fiverr|gig|freelance|work/.test(text)) agents.push('workpilot');
-  if (/lead|prospect|company|business|customer|market|opportunity/.test(text)) agents.push('opportunity-finder');
+  if (/lead|prospect|company|business|customer|market|opportunity/.test(text)) agents.push('lead-finder');
   if (/website|web site|landing|site|logo|brand|design/.test(text)) agents.push('website-brand');
   if (/trend|trending|market signal/.test(text)) agents.push('trend-finder');
-  if (!agents.length) agents.push('opportunity-finder');
+  if (/competitor|rival|competition/.test(text)) agents.push('competitor-monitor');
+  if (!agents.length) agents.push('lead-finder');
   return [...new Set(agents)].slice(0, 4);
 }
-export async function orchestrate(request: OrchestrationRequest): Promise<OrchestrationResult> {
+export async function orchestrate(request: OrchestrationRequest, auth: { accountId: string; userId?: string } | null = null): Promise<OrchestrationResult> {
   const names = chooseAgents(request.request, request.mode);
   const results: AgentResult[] = [];
   const plan = ['Interpret request', ...names.map((name) => `Run ${name}`), 'Cross-check evidence', 'Human-quality review'];
   for (const agent of names.slice(0, MAX_STEPS)) {
     const input: AgentRunInput = { agent, query: request.request, limit: 20 };
-    results.push(await runAgent(null, input));
+    results.push(await runAgent(auth, input));
   }
   const joined = results.map((r) => JSON.stringify(r.body ?? r)).join('\n');
   const needsHumanApproval = Boolean(request.approvalRequired) || /\b(contract|payment|quote|refund|guarantee|submit|send|publish|deploy)\b/i.test(request.request);

@@ -9,7 +9,11 @@ import { researchLead } from '../agents/lead-research-agent';
 export interface FinderPipelineResult { lead: LeadRecord; business: BusinessRecord; report: Awaited<ReturnType<typeof buildReliableLeadReport>>; research: Awaited<ReturnType<typeof researchLead>>['research']; }
 
 function hasVerifiedIdentity(discovered: { name?: string; source?: string; address?: string; city?: string; country?: string }) {
-  return Boolean(discovered.name?.trim() && discovered.source?.trim() && (discovered.address?.trim() || discovered.city?.trim() || discovered.country?.trim()));
+  // A record sourced from a real discovery provider with a business name is a
+  // verifiable lead. Location enriches scoring and contact readiness but is not
+  // a hard gate, otherwise free global sources return nothing for location-less
+  // searches and the agent appears broken.
+  return Boolean(discovered.name?.trim() && discovered.source?.trim());
 }
 
 export async function runLeadFinderPipeline(accountId: string, providers: LeadProvider[], query: LeadSearchQuery): Promise<{ results: FinderPipelineResult[]; warnings: string[] }> {
