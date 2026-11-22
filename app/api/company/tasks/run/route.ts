@@ -1,6 +1,7 @@
 import {NextResponse} from 'next/server';
 import {createSupabaseServerClient} from '../../../../../src/auth/supabase-server';
 import {runAgent} from '../../../../../src/agents/runtime';
+import {publishAgentActivity} from '../../../../../src/convex/activity';
 
 const mapping:Record<string,string>={company_manager:'general-manager',opportunity_researcher:'opportunity-finder',lead_researcher:'lead-finder',website_builder:'website-brand',sales_analyst:'general-manager',finance_assistant:'general-manager'};
 export async function POST(request:Request){
@@ -12,16 +13,25 @@ export async function POST(request:Request){
  const role=employee?.role_key??'company_manager',agent=mapping[role]??'general-manager';
  const {data:task,error:insertError}=await s.from('company_tasks').insert({company_id:membership.company_id,employee_id:employee?.id??null,created_by:user.id,title,instructions,status:'running',started_at:new Date().toISOString()}).select('id').single();
  if(insertError||!task)return NextResponse.json({error:'Could not create task.'},{status:500});
+ const startedAt=Date.now();
+ await publishAgentActivity({companyId:membership.company_id,userId:user.id,taskId:task.id,title,agent,status:'running',message:'Agent started working on this assignment.',startedAt});
  try{
   const result=await runAgent({accountId:membership.company_id,userId:user.id},{agent:agent as any,query:instructions?title+'\n\n'+instructions:title,limit:20});
   const payload='body' in (result as any)?(result as any).body:result;
-  const {error:updateError}=await s.from('company_tasks').update({status:'succeeded',result:payload,completed_at:new Date().toISOString()}).eq('id',task.id).eq('company_id',membership.company_id);
+  const completedAt=Date.now();
+  const {error:updateError}=await s.from('company_tasks').update({status:'succeeded',result:payload,completed_at:new Date(completedAt).toISOString()}).eq('id',task.id).eq('company_id',membership.company_id);
   await s.from('research_reports').insert({company_id:membership.company_id,created_by:user.id,agent_key:agent,title,summary:typeof (payload as any)?.message==='string'?(payload as any).message:'Agent task completed. Review the structured findings and source evidence.',findings:Array.isArray((payload as any)?.results)?(payload as any).results:[],evidence:Array.isArray((payload as any)?.evidence)?(payload as any).evidence:[],confidence:null});
-  if(updateError)return NextResponse.json({error:'Task ran but its result could not be saved.'},{status:500});
+  if(updateError){
+   await publishAgentActivity({companyId:membership.company_id,userId:user.id,taskId:task.id,title,agent,status:'failed',message:'The agent finished, but the task result could not be saved.',startedAt,completedAt,errorCode:'TASK_PERSISTENCE_FAILED'});
+   return NextResponse.json({error:'Task ran but its result could not be saved.'},{status:500});
+  }
+  await publishAgentActivity({companyId:membership.company_id,userId:user.id,taskId:task.id,title,agent,status:'succeeded',message:'Agent task completed. Review the saved research report.',startedAt,completedAt});
   return NextResponse.json({taskId:task.id,agent,result:payload},{status:200});
  }catch(error){
   const message=error instanceof Error?error.message:'Agent execution failed.';
-  await s.from('company_tasks').update({status:'failed',error:message,completed_at:new Date().toISOString()}).eq('id',task.id).eq('company_id',membership.company_id);
+  const completedAt=Date.now();
+  await s.from('company_tasks').update({status:'failed',error:message,completed_at:new Date(completedAt).toISOString()}).eq('id',task.id).eq('company_id',membership.company_id);
+  await publishAgentActivity({companyId:membership.company_id,userId:user.id,taskId:task.id,title,agent,status:'failed',message:'Agent execution failed. Check task history for details.',startedAt,completedAt,errorCode:'AGENT_EXECUTION_FAILED'});
   return NextResponse.json({error:message,taskId:task.id},{status:500});
  }
 }
