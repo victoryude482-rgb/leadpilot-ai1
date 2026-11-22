@@ -2,7 +2,7 @@ name: LeadPilot CI
 
 on:
   push:
-    branches: [main, 'codex/**']
+    branches: [main, 'codex/**', 'feat/convex-agent-activity']
   pull_request:
     branches: [main]
   workflow_dispatch:
