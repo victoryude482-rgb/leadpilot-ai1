@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
 
 const statusValidator = v.union(
