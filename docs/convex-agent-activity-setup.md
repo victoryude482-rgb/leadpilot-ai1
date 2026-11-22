@@ -42,24 +42,25 @@ Set these variables in the Next.js hosting environment (Cloudflare or whichever 
 
 Never commit real secrets to GitHub or paste them into chat.
 
-### 3. Generate Convex types and deploy
+### 3. Deploy through GitHub Actions (no Termux required)
 
-From a trusted environment with the Convex CLI and the existing Convex account authenticated:
+This branch includes `.github/workflows/convex-dev.yml`. It deploys the Convex backend from GitHub Actions after the required secrets are added.
 
-```bash
-npm install
-npx convex dev
-```
+In GitHub, open the repository:
 
-Select the existing LeadPilot development deployment when prompted. This generates `convex/_generated` and pushes the schema/functions. Keep the command running during local development. For a one-time deployment from CI, use a Convex development deploy key stored as a GitHub Actions secret and run `npx convex dev --once`.
+**Settings → Secrets and variables → Actions → New repository secret**
 
-Then run:
+Add these three secrets:
 
-```bash
-npm run typecheck
-npm test
-npm run build
-```
+- `CONVEX_DEPLOY_KEY`: create a **development deploy key** for the LeadPilot development deployment in the Convex dashboard. Do not use a production deploy key for this workflow.
+- `SUPABASE_JWT_ISSUER`: `https://nktsdsdmdnhintykjiiu.supabase.co/auth/v1` (this matches the Supabase project URL already configured in `.env.example`; confirm it matches the `iss` claim of a real access token).
+- `LEADPILOT_ACTIVITY_INGEST_KEY`: generate a long random secret. Use the same value in the Next.js hosting environment and the Convex deployment.
+
+After adding the secrets, push a new commit to `feat/convex-agent-activity` (or ask for a small trigger commit). The workflow will install dependencies, set the two Convex environment variables, run `npx convex dev --once`, and print the resulting Convex URL in the Actions run summary.
+
+Then set that URL as both `CONVEX_URL` and `NEXT_PUBLIC_CONVEX_URL` in the Next.js hosting environment. Keep `LEADPILOT_ACTIVITY_INGEST_KEY` server-only; never add a `NEXT_PUBLIC_` prefix.
+
+The deployment step generates Convex code and pushes the schema/functions. Once the deployment is available, run the existing repository checks (typecheck, tests, build) through CI before enabling the feed on the production app.
 
 Do not enable the activity feed in production until the JWT issuer/audience and live subscription are verified.
 
