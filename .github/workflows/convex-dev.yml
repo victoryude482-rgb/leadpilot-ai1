@@ -1,0 +1,47 @@
+name: Deploy LeadPilot Convex development backend
+
+on:
+  push:
+    branches: ['feat/convex-agent-activity']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      SUPABASE_JWT_ISSUER: ${{ secrets.SUPABASE_JWT_ISSUER }}
+      LEADPILOT_ACTIVITY_INGEST_KEY: ${{ secrets.LEADPILOT_ACTIVITY_INGEST_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Configure and deploy Convex development backend
+        shell: bash
+        run: |
+          if [ -z "$CONVEX_DEPLOY_KEY" ] || [ -z "$SUPABASE_JWT_ISSUER" ] || [ -z "$LEADPILOT_ACTIVITY_INGEST_KEY" ]; then
+            echo "::notice::Convex deployment skipped. Add CONVEX_DEPLOY_KEY, SUPABASE_JWT_ISSUER, and LEADPILOT_ACTIVITY_INGEST_KEY as repository Actions secrets, then push another commit to this branch."
+            exit 0
+          fi
+
+          npm install --no-package-lock
+          npx convex env set SUPABASE_JWT_ISSUER "$SUPABASE_JWT_ISSUER"
+          npx convex env set LEADPILOT_ACTIVITY_INGEST_KEY "$LEADPILOT_ACTIVITY_INGEST_KEY"
+          npx convex dev --once
+
+          if [ -f .env.local ]; then
+            set -a
+            . ./.env.local
+            set +a
+            if [ -n "$CONVEX_URL" ]; then
+              echo "### Convex development deployment" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "`$CONVEX_URL`" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "Set this URL as both CONVEX_URL and NEXT_PUBLIC_CONVEX_URL in the Next.js hosting environment." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
