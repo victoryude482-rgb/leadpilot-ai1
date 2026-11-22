@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
 import { getSupabaseBrowserClient } from "../src/auth/supabase-browser";
 
@@ -73,7 +73,7 @@ function ConnectedConvexProvider({
   children: ReactNode;
   deploymentUrl: string;
 }) {
-  const client = new ConvexReactClient(deploymentUrl);
+  const client = useMemo(() => new ConvexReactClient(deploymentUrl), [deploymentUrl]);
   return (
     <ConvexProviderWithAuth client={client} useAuth={useSupabaseAuth}>
       {children}
